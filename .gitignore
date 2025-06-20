@@ -2,3 +2,4 @@
 *.mat
 .vscode
 *.pdf
+__pycache__
