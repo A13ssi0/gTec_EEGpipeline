@@ -13,10 +13,15 @@ def recv_exact(sock, num_bytes):
         data += packet
     return data
 
-
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect(('127.0.0.1', 12345))
     print("[CLIENT] Connected. Waiting for data...")
+    s.sendall(b'GET_INFO')
+    length = int.from_bytes(recv_exact(s, 4), 'big')
+    data = recv_exact(s, length)
+    info_dict = pickle.loads(data)
+    print("[CLIENT] Received info dictionary:", info_dict)
+
     while True:
         try:
             length = int.from_bytes(recv_exact(s, 4), 'big')
