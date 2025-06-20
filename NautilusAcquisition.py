@@ -21,15 +21,17 @@ class NautilusAcquisition:
         self.host = HOST
         self.port = port
         self.doClose = False
+        self.counter = 0
 
     def run(self):
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen()
-        print(f"[SERVER] Listening on {self.host}:{self.port}")
+        print(f"[Acquisition] Listening on {self.host}:{self.port}")
         threading.Thread(target=self._accept_clients, daemon=True).start()
 
         self.nautilus = pygds.GDS(gds_device=self.info['device']) 
         if self.info['device'] is None: self.info['device'] = self.nautilus.Name
+        self.info['device'] = [self.info['device']]
         self.nautilus.SamplingRate = self.info['samplingRate']
         self.nautilus.SetConfiguration() 
         print("Starting acquisition...")
@@ -45,24 +47,6 @@ class NautilusAcquisition:
             print(f"[+] Client connected: {addr}")
             threading.Thread(target=self._handle_client, args=(conn, addr), daemon=True).start()
 
-    # def _handle_client(self, conn, addr):
-    #     try:
-    #         while True:
-    #             # Clients just wait for data
-    #             data = conn.recv(1)
-    #             if not data:
-    #                 break  # Client disconnected
-    #     except Exception:
-    #         pass
-    #     finally:
-    #         with self.clients_lock:
-    #             self.clients = [(c, a) for (c, a) in self.clients if c != conn]
-    #         print(f"[-] Client disconnected: {addr}")
-    #         print(f"[SERVER] Remaining clients:",self.clients)
-    #         if not self.clients:    # If no clients are connected, stop the acquisition
-    #             print("[SERVER] No clients connected, stopping acquisition.")
-    #             self.doClose = True
-    #         conn.close()
 
     def _handle_client(self, conn, addr):
         try:
@@ -80,9 +64,9 @@ class NautilusAcquisition:
             with self.clients_lock:
                 self.clients = [(c, a) for (c, a) in self.clients if c != conn]
             print(f"[-] Client disconnected: {addr}")
-            print(f"[SERVER] Remaining clients:", self.clients)
+            # print(f"[Acquisition] Remaining clients:", self.clients)
             if not self.clients:    # If no clients are connected, stop the acquisition
-                print("[SERVER] No clients connected, stopping acquisition.")
+                print("[Acquisition] No clients connected, stopping acquisition.")
                 self.doClose = True
             conn.close()
 
@@ -94,13 +78,14 @@ class NautilusAcquisition:
         pickled = pickle.dumps(buffer.getvalue())
         payload = len(pickled).to_bytes(4, 'big') + pickled
         if self.doClose:
-            print("[SERVER] Acquisition stopped due to no clients connected.")
+            print("[Acquisition] Acquisition stopped due to no clients connected.")
             return False
         with self.clients_lock:
             disconnected = []
             for conn, addr in self.clients:
                 try:
                     conn.sendall(payload)
+                    self.counter += data.shape[0]
                     #print(f"[SEND] Pushed to {addr}")
                 except Exception as e:
                     print(f"[ERROR] Could not send to {addr}: {e}")
@@ -111,5 +96,6 @@ class NautilusAcquisition:
     
     def close(self):
         """Call this method to stop the acquisition and close the server"""
+        print('Total data sent:', self.counter)
         del self.nautilus     
-        print("[SERVER] Acquisition stopped and server closed successfully.")
+        print("[Acquisition] Acquisition stopped and server closed successfully.")
