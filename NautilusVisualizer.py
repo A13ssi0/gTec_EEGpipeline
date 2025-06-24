@@ -37,17 +37,19 @@ class NautilusVisualizer:
         self.socket.close()
     
     def on_number_entered(self):
-        val_a = int(self.left_input.text()) if self.left_input.text() else ''
-        val_b = int(self.right_input.text()) if self.right_input.text() else ''
-        # if val_a and val_b:     
-        #     print(f"[Visualizer] Setting filter with values: {val_a}, {val_b}")
-        #     self.filter = RealTimeButterFilter(2, np.array([val_a, val_b]), self.info['samplingRate'], 'bandpass')
-        # elif val_a:     
-        #     print(f"[Visualizer] Setting highpass filter with value: {val_a}")        
-        #     self.filter = RealTimeButterFilter(2, val_a, self.info['samplingRate'], 'highpass')
-        # elif val_b:        
-        #     print(f"[Visualizer] Setting lowpass filter with value: {val_b}")     
-        #     self.filter = RealTimeButterFilter(2, val_b, self.info['samplingRate'], 'lowpass')
+        cutHp = '/hp'+self.left_input.text() if self.left_input.text() else ''
+        cutLp = '/lp'+self.right_input.text()  if self.right_input.text() else ''
+        message = 'FILTERS' + cutHp + cutLp
+        self.socket.sendall(message.encode())
+        # if cutHp and cutLp:     
+        #     print(f"[Visualizer] Setting filter with values: {cutHp}, {cutLp}")
+        #     self.filter = RealTimeButterFilter(2, np.array([cutHp, cutLp]), self.info['samplingRate'], 'bandpass')
+        # elif cutHp:     
+        #     print(f"[Visualizer] Setting highpass filter with value: {cutHp}")        
+        #     self.filter = RealTimeButterFilter(2, cutHp, self.info['samplingRate'], 'highpass')
+        # elif cutLp:        
+        #     print(f"[Visualizer] Setting lowpass filter with value: {cutLp}")     
+        #     self.filter = RealTimeButterFilter(2, cutLp, self.info['samplingRate'], 'lowpass')
 
     def setup(self):
         nChannels = len(self.info['channels'])

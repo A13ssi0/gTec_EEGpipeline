@@ -4,11 +4,12 @@ import pickle
 import io
 import numpy as np
 import time
+from RealTimeButterFilter import RealTimeButterFilter
 
 #__________________________________________________________________________________________________________________________________#
 
 class UDPServer(threading.Thread):
-    def __init__(self, host='127.0.0.1', port=5000, serverName='UDP',node=None):
+    def __init__(self, host='127.0.0.1', port=5000, serverName='UDP', node=None):
         super().__init__()
         self.node = node
         self.host = host
@@ -53,23 +54,33 @@ class TCPClientHandler(threading.Thread):
     def run(self):
         try:
             while not self.server.stop:
-                # data = self.conn.recv(4096)
-                # if not data:
-                #     break
-                # message = pickle.loads(data)
-                # print(f"[{self.serverName}] Received from {self.addr}: {message}")
-                
-                # # Example echo back or you can customize
-                # response = {'type': 'tcp_response', 'message': 'Message received'}
-                # self.conn.sendall(pickle.dumps(response))
-                pass
+                message = self.conn.recv(4096)
+                if not message:
+                    break
+                message = message.decode()
+
+                if message.startswith('FILTERS/'):
+                    parts = message.split('/')
+                    if len(parts) == 3:
+                        cutHp = parts[1][2:]
+                        cutLp = parts[2][2:]
+                        cutArray = np.array([int(cutHp), int(cutLp)])
+                        self.server.node.filter = RealTimeButterFilter(2, cutArray, self.server.node.info['samplingRate'], 'bandpass')
+                    elif parts[1][0:2] == 'hp':
+                        cutHp = int(parts[1][2:])
+                        self.server.node.filter = RealTimeButterFilter(2, cutHp, self.server.node.info['samplingRate'], 'highpass')
+                    elif parts[1][0:2] == 'lb':    
+                        cutLp = int(parts[1][2:])
+                        self.server.node.filter = RealTimeButterFilter(2, cutLp, self.server.node.info['samplingRate'], 'lowpass')
+                    
+                    print(f"[{self.server.serverName}] Received filter command from {self.addr}: {cutHp}, {cutLp}")
         except Exception as e:
-            print(f"[{self.serverName}] ERROR with {self.addr}: {e}")
+            print(f"[{self.server.serverName}] ERROR with {self.addr}: {e}")
 
 
 
 class TCPServer(threading.Thread):
-    def __init__(self, host='127.0.0.1', port=6000, serverName='TCP'):
+    def __init__(self, host='127.0.0.1', port=6000, serverName='TCP', node=None):
         super().__init__()
         self.serverName = serverName
         self.host = host
@@ -82,6 +93,7 @@ class TCPServer(threading.Thread):
         self.clients_lock = threading.Lock()
         self.daemon = True
         self.stop = False
+        self.node = node
 
     def run(self):
         print(f"[{self.serverName}] Server listening on {self.host}:{self.port}")
