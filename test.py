@@ -1,39 +1,11 @@
-import pygds 
-import time
-import matplotlib.pyplot as plt
+# import socket
 
+# def find_open_port():
+#     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+#         s.bind(('', 0))  # Bind to any available port
+#         return s.getsockname()[1]
 
-global c
-c =0
+# print(f"Open port: {find_open_port()}")
 
-
-def test(data):
-    print(data.shape)
-    global c
-    print(time.time()  - c)
-    c = time.time()
-    if KeyboardInterrupt:
-        print("Ctrl+C detected!")
-        return False
-    #A = time.time()
-    return True
-
-
-def main(d):
-    a = d.GetData(20, more=test)
-
-
-try:
-    d = pygds.GDS() 
-    d.SamplingRate = 500
-    print(d.SamplingRate)
-    #scope = pygds.Scope(1/d.SamplingRate, title="Channels: %s", ylabel = u"U[μV]")
-    f_s_2 = sorted(d.GetSupportedSamplingRates()[0].items())
-    print(f_s_2)
-    d.SetConfiguration() 
-    main(d)
-except KeyboardInterrupt:
-    print("Ctrl+C detected!")
-finally:
-    print("Exiting gracefully...")
-    del d
+# import pygds
+# d = pygds.GDS()

@@ -17,6 +17,10 @@ class Buffer:
 
         if not self.isFull and self.ptr == self.data.shape[0]: self.isFull = True  # Buffer was filled completely
 
+    def remove_mean(self):
+        mean = np.nanmean(self.data, axis=0)
+        self.data -= mean
+
 
 
 class BufferVisualizer(Buffer):
@@ -28,4 +32,6 @@ class BufferVisualizer(Buffer):
 
         self.data[self.ptr:self.ptr+n_samples, :] = new_data
         self.ptr = self.ptr + n_samples
+
+
             

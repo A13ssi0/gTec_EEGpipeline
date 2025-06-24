@@ -3,3 +3,4 @@
 .vscode
 *.pdf
 __pycache__
+test.py
