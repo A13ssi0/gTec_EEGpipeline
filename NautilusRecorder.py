@@ -13,6 +13,7 @@ class NautilusRecorder:
         self.fileName = fileName
         self.file = open(f"{fileName}.txt", "w")
         self.port = port
+        self.host = HOST
 
     def saveData(self):
         self.file.close()
@@ -23,7 +24,7 @@ class NautilusRecorder:
 
     def run(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect(('127.0.0.1', 12345))
+            s.connect((self.host, self.port))
             print("[Recorder] Connected. Waiting for data...")
             s.sendall(b'GET_INFO')
             length = int.from_bytes(self.recv_exact(s, 4), 'big')

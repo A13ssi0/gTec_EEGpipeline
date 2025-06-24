@@ -4,6 +4,9 @@ import pickle
 import io
 import threading
 import pygds 
+import random
+import time
+import keyboard
 
 HOST = '127.0.0.1'
 
@@ -24,18 +27,27 @@ class NautilusAcquisition:
         self.counter = 0
 
     def run(self):
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen()
         print(f"[Acquisition] Listening on {self.host}:{self.port}")
         threading.Thread(target=self._accept_clients, daemon=True).start()
 
-        self.nautilus = pygds.GDS(gds_device=self.info['device']) 
-        if self.info['device'] is None: self.info['device'] = self.nautilus.Name
-        self.info['device'] = [self.info['device']]
-        self.nautilus.SamplingRate = self.info['samplingRate']
-        self.nautilus.SetConfiguration() 
-        print("Starting acquisition...")
-        self.nautilus.GetData(self.info['dataChunkSize'], more=self.data_callback)
+        if self.info['device'] == 'test':     
+            while not self.doClose:
+                self.nautilus = None  # Simulate a test device
+                # Simulate data acquisition for testing
+                time.sleep(self.info['dataChunkSize'] / self.info['samplingRate'])  # Simulate time delay
+                data = np.random.randn(self.info['dataChunkSize'], len(self.info['channels']))
+                self.data_callback(data)
+        else:                               
+            self.nautilus = pygds.GDS(gds_device=self.info['device']) 
+            if self.info['device'] is None: self.info['device'] = self.nautilus.Name
+            self.info['device'] = [self.info['device']]
+            self.nautilus.SamplingRate = self.info['samplingRate']
+            self.nautilus.SetConfiguration() 
+            print("Starting acquisition...")
+            self.nautilus.GetData(self.info['dataChunkSize'], more=self.data_callback)
 
         self.close()  # Close the server after starting acquisition
 
@@ -77,6 +89,9 @@ class NautilusAcquisition:
         np.save(buffer, data)
         pickled = pickle.dumps(buffer.getvalue())
         payload = len(pickled).to_bytes(4, 'big') + pickled
+        if self.info['device'] == 'test' and keyboard.is_pressed('esc'): 
+            self.doClose = True,  # Stop acquisition if escape key is pressed in test mode
+            return
         if self.doClose:
             print("[Acquisition] Acquisition stopped due to no clients connected.")
             return False
