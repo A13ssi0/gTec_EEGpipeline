@@ -6,64 +6,57 @@ import time
 import socket
 import pickle
 import io
+from server import recv_tcp, recv_udp, wait_for_udp_server
 
 HOST = '127.0.0.1'
 
 class NautilusVisualizer:
-    def __init__(self, port=12345, secondwindows=10):
-        self.secondwindows = secondwindows
+    def __init__(self, data_port=12345, info_port=54321, lenWindow=10):
+        self.name = 'Visualizer'
+        self.lenWindow = lenWindow
         self.counter = 0
         self.host = HOST
-        self.port = port
-        self.closeApp = False
-        self.newData = False
+        self.data_port = data_port
+        self.info_port = info_port
         self.aa = 0
-        self.filter = None  # Placeholder for any filter if needed
+        # self.filter = None  # Placeholder for any filter if needed
 
     def run(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        wait_for_udp_server(self.host, self.info_port)
+        sock.sendto(pickle.dumps('GET_INFO'), (self.host, self.info_port))
+        self.info = recv_udp(sock)
+        print(f"[{self.name}] Received info dictionary")
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.socket:
-            self.socket.connect((self.host, self.port))
-            print("[Visualizer] Connected. Waiting for data...")
-            self.socket.sendall(b'GET_INFO')
-            length = int.from_bytes(self.recv_exact(self.socket, 4), 'big')
-            data = self.recv_exact(self.socket, length)
-            print(length, data)
-            self.info = pickle.loads(data)
-            print("[Visualizer] Received info dictionary")
+            self.socket.connect((self.host, self.data_port))
+            print(f"[{self.name}] Connected. Waiting for data...")
             self.setup()
-            print("[Visualizer] Starting the visualization")
+            print(f"[{self.name}] Starting the visualization")
             self.app.exec()
-            self.socket.close()
-            
-            
-    def recv_exact(self, sock, num_bytes):
-        data = b''
-        while len(data) < num_bytes:
-            packet = sock.recv(num_bytes - len(data))
-            if not packet:
-                raise ConnectionError("Disconnected")
-            data += packet
-        return data
+        self.socket.close()
     
     def on_number_entered(self):
         val_a = int(self.left_input.text()) if self.left_input.text() else ''
         val_b = int(self.right_input.text()) if self.right_input.text() else ''
-        if val_a and val_b:     
-            print(f"[Visualizer] Setting filter with values: {val_a}, {val_b}")
-            self.filter = RealTimeButterFilter(2, np.array([val_a, val_b]), self.info['samplingRate'], 'bandpass')
-        elif val_a:     
-            print(f"[Visualizer] Setting highpass filter with value: {val_a}")        
-            self.filter = RealTimeButterFilter(2, val_a, self.info['samplingRate'], 'highpass')
-        elif val_b:        
-            print(f"[Visualizer] Setting lowpass filter with value: {val_b}")     
-            self.filter = RealTimeButterFilter(2, val_b, self.info['samplingRate'], 'lowpass')
+        # if val_a and val_b:     
+        #     print(f"[Visualizer] Setting filter with values: {val_a}, {val_b}")
+        #     self.filter = RealTimeButterFilter(2, np.array([val_a, val_b]), self.info['samplingRate'], 'bandpass')
+        # elif val_a:     
+        #     print(f"[Visualizer] Setting highpass filter with value: {val_a}")        
+        #     self.filter = RealTimeButterFilter(2, val_a, self.info['samplingRate'], 'highpass')
+        # elif val_b:        
+        #     print(f"[Visualizer] Setting lowpass filter with value: {val_b}")     
+        #     self.filter = RealTimeButterFilter(2, val_b, self.info['samplingRate'], 'lowpass')
 
     def setup(self):
         nChannels = len(self.info['channels'])
-        bufferSize = self.info['samplingRate'] * self.secondwindows
+        bufferSize = self.info['samplingRate'] * self.lenWindow
         self.buffer = BufferVisualizer((bufferSize, nChannels))
         self.offset = np.array(range(nChannels)) * 1000
+        self.setupWindow()
 
+    def setupWindow(self):
         pg.setConfigOption('background', 'w')
         pg.setConfigOption('foreground', 'k')
 
@@ -112,8 +105,8 @@ class NautilusVisualizer:
 
         self.plot = self.win.addPlot()
         self.curves = []
-        for i in range(nChannels):
-            pen = pg.mkPen(color=pg.intColor(i, hues=nChannels), width=1)
+        for i in range(self.buffer.data.shape[1]):
+            pen = pg.mkPen(color=pg.intColor(i, hues=self.buffer.data.shape[1]), width=1)
             curve = self.plot.plot(pen=pen)
             self.curves.append(curve)
 
@@ -132,7 +125,7 @@ class NautilusVisualizer:
         if event.key() == pg.QtCore.Qt.Key.Key_Escape:
             print("[Visualizer] Escape key pressed, exiting.")
             self.app.quit()
-            self.closeApp = True
+ 
             
 
     def update_plot(self):
@@ -147,16 +140,16 @@ class NautilusVisualizer:
 
     def handle_data(self):
         try:
-            length = int.from_bytes(self.recv_exact(self.socket, 4), 'big')
-            data = self.recv_exact(self.socket, length)
+            length = int.from_bytes(recv_tcp(self.socket, 4), 'big')
+            data = recv_tcp(self.socket, length)
             matrix_bytes = pickle.loads(data)
             matrix = np.load(io.BytesIO(matrix_bytes))
-            if self.filter is not None: matrix = self.filter.filter(matrix)
+            # if self.filter is not None: matrix = self.filter.filter(matrix)
             self.buffer.add_data(matrix)
             # self.buffer.remove_mean()  # Remove mean from the buffer
         except Exception as e:
             print("[Visualizer] Error or disconnected:", e)
             self.app.quit()
-            self.closeApp = True
+
 
                     
