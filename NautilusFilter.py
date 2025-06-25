@@ -4,6 +4,7 @@ import pickle
 import io
 from server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server
 from RealTimeButterFilter import RealTimeButterFilter
+import keyboard
 
 HOST = '127.0.0.1'
 
@@ -42,9 +43,10 @@ class NautilusFilter:
                         data = recv_tcp(tcp_sock, length)
                         # matrix_bytes = pickle.loads(raw_data)
                         matrix = np.load(io.BytesIO(data))
-                        if self.filter is not None:
-                            matrix = self.filter.filter(matrix)
+                        if self.filter is not None: matrix = self.filter.filter(matrix)
                         self.data_socket.broadcast(matrix)
+
+                        if keyboard.is_pressed('F1'): self.stop = True
 
                     except Exception as e:
                         print(f"[{self.name}] Data processing error:", e)

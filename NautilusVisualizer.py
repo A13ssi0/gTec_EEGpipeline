@@ -96,7 +96,7 @@ class NautilusVisualizer:
         return input_field
 
     def keyPressEvent(self, event):
-        if event.key() == pg.QtCore.Qt.Key_Escape:
+        if event.key() == pg.QtCore.Qt.Key.Key_F2:
             print("[Visualizer] Escape key pressed, exiting.")
             self.app.quit()
 

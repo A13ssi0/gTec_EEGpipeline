@@ -46,9 +46,9 @@ class NautilusAcquisition:
         sleep_time = max(0, dt - 0.001)
 
         while not self.stop:
-            if keyboard.is_pressed('esc'):
-                self.stop = True
-                break
+            # if keyboard.is_pressed('esc'):
+            #     self.stop = True
+            #     break
 
             # Preallocate for performance
             data = np.random.randn(self.dataChunkSize, n_channels).astype(np.float32)
