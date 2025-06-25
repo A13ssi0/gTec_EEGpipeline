@@ -97,6 +97,18 @@ class NautilusVisualizer:
         self.main_widget.show()
 
         self.plot = self.win.addPlot()
+        self.plot.invertY(True)
+        self.plot.setXRange(0, self.buffer.data.shape[0], padding=0)
+        self.plot.enableAutoRange(x=False, y=True)       #   ________________________________________canche the autorange in y axis after deciding the dimesnios
+
+        y_axis = self.plot.getAxis('left')
+        custom_ticks = list(zip(self.offset[::-1], self.info['channels'][::-1]))
+        y_axis.setTicks([custom_ticks])  # Only major ticks, no minor ticks
+        y_axis.setStyle(tickLength=0)
+
+        x_axis = self.plot.getAxis('bottom')
+        x_axis.setTicks([])  # No ticks at all
+
         self.curves = [
             self.plot.plot(pen=pg.mkPen(color=pg.intColor(i), width=1))
             for i in range(self.buffer.data.shape[1])
