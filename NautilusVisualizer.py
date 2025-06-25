@@ -58,6 +58,7 @@ class NautilusVisualizer:
         input_row = pg.QtWidgets.QHBoxLayout()
         self.left_input = self._create_input("CutOff HighPass:", input_row)
         self.right_input = self._create_input("CutOff LowPass:", input_row)
+        input_row.addStretch()
 
         layout.addLayout(input_row)
 
@@ -100,13 +101,11 @@ class NautilusVisualizer:
             self.app.quit()
 
     def update_plot(self):
-        if self.counter == 0:
-            self.last_plot_time = time.time()
-        self.counter += self.info['dataChunkSize']
         if self.counter >= 500:
             print(f"Time elapsed: {time.time() - self.last_plot_time:.2f} s")
             self.last_plot_time = time.time()
             self.counter = 0
+        if self.counter == 0: self.last_plot_time = time.time()
         data = self.buffer.data
         for i, curve in enumerate(self.curves):
             curve.setData(data[:, i] + self.offset[i])
@@ -115,9 +114,10 @@ class NautilusVisualizer:
         try:
             length = int.from_bytes(recv_tcp(self.socket, 4), 'big')
             raw_data = recv_tcp(self.socket, length)
-            matrix_bytes = pickle.loads(raw_data)
-            matrix = np.load(io.BytesIO(matrix_bytes))
+            # matrix_bytes = pickle.loads(raw_data)
+            matrix = np.load(io.BytesIO(raw_data))
             self.buffer.add_data(matrix)
+            self.counter += self.info['dataChunkSize']
         except Exception as e:
             print("[Visualizer] Error or disconnected:", e)
             self.app.quit()

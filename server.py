@@ -60,6 +60,7 @@ class TCPClientHandler(threading.Thread):
         except Exception as e:
             print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
         finally:
+            self.server.remove_client(self.conn)
             self.conn.close()
 
     def handle_filter_command(self, msg):
@@ -106,6 +107,7 @@ class TCPServer(threading.Thread):
                 with self.clients_lock:
                     self.clients.append(conn)
                 print(f"[+][{self.serverName}] Client connected: {addr}")
+
                 TCPClientHandler(conn, addr, self).start()
             except socket.timeout:
                 continue
@@ -115,12 +117,14 @@ class TCPServer(threading.Thread):
     def remove_client(self, conn):
         with self.clients_lock:
             if conn in self.clients:
+                print(f"[-][{self.serverName}] Client removed: {conn.getpeername()}")
                 self.clients.remove(conn)
+                
 
-    def broadcast(self, data: np.ndarray):
+    def broadcast(self, data):
         try:
             buf = io.BytesIO()
-            np.save(buf, data, allow_pickle=False)
+            np.save(buf, data)
             payload = buf.getvalue()
             full_payload = len(payload).to_bytes(4, 'big') + payload
         except Exception as e:
@@ -151,7 +155,7 @@ def recv_tcp(sock, num_bytes):
         packet = sock.recv(num_bytes - len(data))
         if not packet:
             raise ConnectionError("Disconnected")
-        data.extend(packet)
+        data+=packet
     return data
 
 
@@ -171,13 +175,10 @@ def wait_for_udp_server(host='127.0.0.1', port=5000, timeout=10):
                 sock.sendto(message, (host, port))
                 sock.recvfrom(4096)
                 return
-            except socket.timeout:
+            except (socket.timeout, ConnectionResetError):
                 continue
     raise TimeoutError("UDP server did not respond in time.")
 
-
-import socket
-import time
 
 def wait_for_tcp_server(host='127.0.0.1', port=5000, timeout=10):
     deadline = time.time() + timeout
@@ -196,3 +197,26 @@ def wait_for_tcp_server(host='127.0.0.1', port=5000, timeout=10):
         finally:
             sock.close()
     raise TimeoutError(f"TCP server at {host}:{port} did not respond within {timeout} seconds.")
+
+
+def get_free_ports(ip='127.0.0.1', n=1, start=1024, end=65535, timeout=0.5):
+    free_ports = []
+    port = start
+
+    while len(free_ports) < n and port <= end:
+        tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        tcp_sock.settimeout(timeout)
+        try:
+            tcp_sock.bind((ip, port))
+            udp_sock.bind((ip, port))
+            free_ports.append(port)
+        except OSError:
+            pass  # Port is already in use
+        finally:
+            tcp_sock.close()
+            udp_sock.close()
+        port += 1
+    if len(free_ports) < n:
+        raise RuntimeError("Not enough free ports found.")
+    return free_ports

@@ -34,8 +34,8 @@ class NautilusRecorder:
                 try:
                     length = int.from_bytes(recv_tcp(sock, 4), 'big')
                     data = recv_tcp(sock, length)
-                    matrix_bytes = pickle.loads(data)
-                    matrix = np.load(io.BytesIO(matrix_bytes))
+                    # matrix_bytes = pickle.loads(data)
+                    matrix = np.load(io.BytesIO(data))
                     for row in matrix:    self.file.write(' '.join(map(str, row)) + '\n')
                     if keyboard.is_pressed('esc'):    
                         print(f"[{self.name}] Escape key pressed, exiting.")

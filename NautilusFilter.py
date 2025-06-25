@@ -2,7 +2,7 @@ import socket
 import numpy as np
 import pickle
 import io
-from server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server
+from server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server
 from RealTimeButterFilter import RealTimeButterFilter
 
 HOST = '127.0.0.1'
@@ -29,7 +29,7 @@ class NautilusFilter:
             self.info = recv_udp(udp_sock)
 
         print(f"[{self.name}] Received info dictionary")
-
+        wait_for_tcp_server(self.host, self.data_port)
         # Connect to data source (acquisition stream)
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_sock:
@@ -39,13 +39,11 @@ class NautilusFilter:
                 while not self.stop:
                     try:
                         length = int.from_bytes(recv_tcp(tcp_sock, 4), 'big')
-                        raw_data = recv_tcp(tcp_sock, length)
-                        matrix_bytes = pickle.loads(raw_data)
-                        matrix = np.load(io.BytesIO(matrix_bytes))
-
+                        data = recv_tcp(tcp_sock, length)
+                        # matrix_bytes = pickle.loads(raw_data)
+                        matrix = np.load(io.BytesIO(data))
                         if self.filter is not None:
                             matrix = self.filter.filter(matrix)
-                        print(f"[{self.name}] Processed data shape: {matrix.shape}")
                         self.data_socket.broadcast(matrix)
 
                     except Exception as e:
