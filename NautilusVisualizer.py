@@ -15,6 +15,7 @@ class NautilusVisualizer:
         self.data_port = data_port
         self.info_port = info_port
         self.last_plot_time = 0
+        self.applyCAR = False
 
     def run(self):
         wait_for_udp_server(self.host, self.info_port)
@@ -34,12 +35,29 @@ class NautilusVisualizer:
         self.socket.close()
 
     def on_number_entered(self):
-        hp = self.left_input.text()
-        lp = self.right_input.text()
-        cutHp = f'/hp{hp}' if hp else ''
-        cutLp = f'/lp{lp}' if lp else ''
-        message = f'FILTERS{cutHp}{cutLp}'
-        self.socket.sendall(message.encode())
+        if self.filter_checkbox.isChecked():
+            hp = self.left_input.text()
+            lp = self.right_input.text()
+            cutHp = f'/hp{hp}' if hp else ''
+            cutLp = f'/lp{lp}' if lp else ''
+            message = f'FILTERS{cutHp}{cutLp}'
+            self.socket.sendall(message.encode())
+        else:
+            self.socket.sendall(b'FILTERS')
+
+
+    def on_filter_toggled(self):
+        if self.filter_checkbox.isChecked():    self.on_number_entered()  # Send current filter config
+        else:                                   self.socket.sendall(b'FILTERS') 
+
+    def on_car_toggled(self):
+        if self.car_checkbox.isChecked():
+            print(f"[{self.name}] Applying CAR")
+            self.applyCAR = True
+        else:
+            print(f"[{self.name}] Disabling CAR")
+            self.applyCAR = False
+        
 
     def setup(self):
         nChannels = len(self.info['channels'])
@@ -56,8 +74,18 @@ class NautilusVisualizer:
 
         # Input row
         input_row = pg.QtWidgets.QHBoxLayout()
+        self.filter_checkbox = pg.QtWidgets.QCheckBox("Enable Filters")
+        self.filter_checkbox.setChecked(False)
+        self.filter_checkbox.stateChanged.connect(self.on_filter_toggled)
+        input_row.addWidget(self.filter_checkbox)
+
         self.left_input = self._create_input("CutOff HighPass:", input_row)
         self.right_input = self._create_input("CutOff LowPass:", input_row)
+
+        self.car_checkbox = pg.QtWidgets.QCheckBox("CAR")
+        self.car_checkbox.setChecked(False)
+        self.car_checkbox.stateChanged.connect(self.on_car_toggled)
+        input_row.addWidget(self.car_checkbox)
         input_row.addStretch()
 
         layout.addLayout(input_row)
@@ -91,6 +119,7 @@ class NautilusVisualizer:
         input_field.setFixedWidth(60)
         input_field.setPlaceholderText("/")
         input_field.returnPressed.connect(self.on_number_entered)
+
         layout.addWidget(label)
         layout.addWidget(input_field)
         return input_field
@@ -116,6 +145,7 @@ class NautilusVisualizer:
             raw_data = recv_tcp(self.socket, length)
             # matrix_bytes = pickle.loads(raw_data)
             matrix = np.load(io.BytesIO(raw_data))
+            if self.applyCAR:  matrix -= np.mean(matrix, axis=0, keepdims=True)
             self.buffer.add_data(matrix)
             self.counter += self.info['dataChunkSize']
         except Exception as e:

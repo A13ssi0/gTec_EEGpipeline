@@ -66,9 +66,13 @@ class TCPClientHandler(threading.Thread):
     def handle_filter_command(self, msg):
         parts = msg.split('/')
         try:
+            if len(parts) == 1:
+                if self.server.node.filter is not None: print(f"[{self.server.serverName}] Filter resetted")
+                self.server.node.filter = None
+                return
             if len(parts) == 3:
                 hp, lp = int(parts[1][2:]), int(parts[2][2:])
-                filt = RealTimeButterFilter(2, [hp, lp], self.server.node.info['samplingRate'], 'bandpass')
+                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['samplingRate'], 'bandpass')
             elif parts[1].startswith('hp'):
                 hp = int(parts[1][2:])
                 filt = RealTimeButterFilter(2, hp, self.server.node.info['samplingRate'], 'highpass')
