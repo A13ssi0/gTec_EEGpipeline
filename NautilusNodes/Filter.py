@@ -1,5 +1,5 @@
 import socket
-from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server
+from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp
 import keyboard
 import ast  # For safely converting string dicts
 
@@ -23,8 +23,8 @@ class Filter:
         # Wait and retrieve info from UDP server
         wait_for_udp_server(self.host, self.info_port)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            udp_sock.sendto(b"GET_INFO", (self.host, self.info_port))
-            ts, raw_info = recv_udp(udp_sock)
+            send_udp(udp_sock, (self.host,self.info_port), "GET_INFO")  # Request info from the server
+            ts, raw_info, addr = recv_udp(udp_sock)
             try:
                 self.info = ast.literal_eval(raw_info)  # safely parse string dict
             except Exception as e:
@@ -38,6 +38,7 @@ class Filter:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_sock:
                 tcp_sock.connect((self.host, self.data_port))
+                send_tcp(b'', tcp_sock)
                 print(f"[{self.name}] Connected to data source. Starting filter loop...")
 
                 while not self.stop:
@@ -46,7 +47,7 @@ class Filter:
 
                         if self.filter is not None:
                             matrix = self.filter.filter(matrix)
-
+                       
                         self.data_socket.broadcast(matrix)
 
                         if keyboard.is_pressed('F1'):

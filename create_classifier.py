@@ -8,11 +8,9 @@ from pyriemann.utils.test import is_sym_pos_def
 from scipy.io import savemat, loadmat
 
 from py_utils.data_managment import get_files
+import utils
 
-def main():
-
-    subject = 'i4'
-    task = 'bfbh'
+def main(subject, task='bfbh'):
 
     filter_order = 4
 
@@ -144,6 +142,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    subject = input("[CreateClassifier] Subject code: ")
+    main(subject)
 
     

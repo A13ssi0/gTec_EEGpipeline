@@ -1,10 +1,18 @@
+import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 import socket
 import threading
 import numpy as np
 import time
 import io
-from utils.RealTimeButterFilter import RealTimeButterFilter
+from py_utils.signal_processing import RealTimeButterFilter
 import keyboard
+
 
 def get_timestamp_bytes():
     ts = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
@@ -27,23 +35,12 @@ class UDPServer(threading.Thread):
         print(f"[{self.serverName}] Listening on {self.host}:{self.port}")
         while not self._stop.is_set():
             try:
-                data, addr = self.sock.recvfrom(4096)
-                msg = data.decode('utf-8', errors='ignore').strip()
+                ts, msg, addr = recv_udp(self.sock)
+                # msg = data.decode('utf-8', errors='ignore').strip()
 
-                if msg == 'GET_INFO' and self.node:
-                    info_bytes = str(self.node.info).encode('utf-8')
-                    ts_len, ts_bytes = get_timestamp_bytes()
-                    msg_len = len(info_bytes).to_bytes(4, 'big')
-                    self.sock.sendto(ts_len + ts_bytes + msg_len + info_bytes, addr)
-
-                elif msg == 'PING':
-                    pong_bytes = b'pong'
-                    ts_len, ts_bytes = get_timestamp_bytes()
-                    msg_len = len(pong_bytes).to_bytes(4, 'big')
-                    self.sock.sendto(ts_len + ts_bytes + msg_len + pong_bytes, addr)
-
-                else:
-                    print(f"[{self.serverName}] Unknown message from {addr}: {msg}")
+                if msg == 'GET_INFO' and self.node: send_udp(self.sock, addr, str(self.node.info))
+                elif msg == 'PING':     send_udp(self.sock, addr, 'PONG')
+                else:   print(f"[{self.serverName}] Unknown message from {addr}: {msg}")
 
             except Exception as e:
                 print(f"[{self.serverName}] Error: {e}")
@@ -66,39 +63,12 @@ class TCPClientHandler(threading.Thread):
                 timestamp, matrix = recv_tcp(self.conn)
                 # Handle filters sent from client
                 msg = matrix.decode('utf-8', errors='ignore') if isinstance(matrix, bytes) else ""
-                if msg.startswith('FILTERS'):
-                    self.handle_filter_command(msg)
         except Exception as e:
             print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
         finally:
             try:    self.server.remove_client(self.conn)
             except: pass
             self.conn.close()
-
-    def handle_filter_command(self, msg):
-        parts = msg.split('/')
-        try:
-            if len(parts) == 1:
-                if self.server.node.filter is not None:
-                    print(f"[{self.server.serverName}] Filter reset")
-                self.server.node.filter = None
-                return
-            if len(parts) == 3:
-                hp = int(parts[1][2:])
-                lp = int(parts[2][2:])
-                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['samplingRate'], 'bandpass')
-            elif parts[1].startswith('hp'):
-                hp = int(parts[1][2:])
-                filt = RealTimeButterFilter(2, hp, self.server.node.info['samplingRate'], 'highpass')
-            elif parts[1].startswith('lp'):
-                lp = int(parts[1][2:])
-                filt = RealTimeButterFilter(2, lp, self.server.node.info['samplingRate'], 'lowpass')
-            else:
-                return
-            self.server.node.filter = filt
-            print(f"[{self.server.serverName}] Filter set: {msg}")
-        except Exception as e:
-            print(f"[{self.server.serverName}] Filter parse error: {e}")
 
 
 class TCPServer(threading.Thread):
@@ -116,6 +86,33 @@ class TCPServer(threading.Thread):
         self.clients_lock = threading.Lock()
         self._stop = threading.Event()
 
+
+    def choose_handler(self, conn, addr):
+        try:
+            # You can add a timeout if needed
+
+            conn.settimeout(10)
+            _, msg = recv_tcp(conn)
+            conn.settimeout(None)
+            msg = msg.decode('utf-8', errors='ignore') if isinstance(msg, bytes) else ""
+            if msg == "FILTERS":
+                handler = TCPFilterClientHandler(conn, addr, self)
+                handler.start()
+                return
+
+            # default handler
+            handler = TCPClientHandler(conn, addr, self)
+            handler.start()
+
+        except socket.timeout:
+            handler = TCPClientHandler(conn, addr, self)
+            handler.start()
+
+        except Exception as e:
+            print(f"[{self.serverName}] Error choosing handler: {e}")
+            conn.close()
+
+
     def run(self):
         print(f"[{self.serverName}] Listening on {self.host}:{self.port}")
         while not self._stop.is_set():
@@ -124,7 +121,7 @@ class TCPServer(threading.Thread):
                 with self.clients_lock:
                     self.clients.append(conn)
                 print(f"[+][{self.serverName}] Client connected: {addr}")
-                TCPClientHandler(conn, addr, self).start()
+                self.choose_handler(conn, addr)
             except Exception as e:
                 print(f"[{self.serverName}] Accept error: {e}")
 
@@ -136,12 +133,7 @@ class TCPServer(threading.Thread):
 
     def broadcast(self, data):
         try:
-            buf = io.BytesIO()
-            np.save(buf, data)
-            payload = buf.getvalue()
-            ts_len, ts_bytes = get_timestamp_bytes()
-            data_len = len(payload).to_bytes(4, 'big')
-            full_payload = ts_len + ts_bytes + data_len + payload
+            full_payload = send_tcp(data, sock=None)  # For testing purposes, return the full message without sending
         except Exception as e:
             print(f"[{self.serverName}] Data preparation error: {e}")
             return
@@ -196,14 +188,43 @@ def recv_tcp(sock):
         raise ConnectionError(f"TCP receive failed: {e}")
 
 
+def send_tcp(message, sock=None):
+    if isinstance(message, np.ndarray):
+        buf = io.BytesIO()
+        np.save(buf, message)
+        payload = buf.getvalue()
+    elif isinstance(message, bytes):
+        payload = message
+    elif isinstance(message, str):
+        payload = message.encode('utf-8')
+    else:
+        raise TypeError("Message must be a NumPy array, bytes or string")
+
+    ts_len, ts_bytes = get_timestamp_bytes()
+    data_len = len(payload).to_bytes(4, 'big')
+    full_message = ts_len + ts_bytes + data_len + payload
+
+    if sock is not None : sock.sendall(full_message)
+    else: return full_message  # For testing purposes, return the full message without sending
+
+
 def recv_udp(sock, num_bytes=4096):
-    data, _ = sock.recvfrom(num_bytes)
+    data, addr = sock.recvfrom(num_bytes)
     ts_len = int.from_bytes(data[:4], 'big')
     ts = data[4:4+ts_len].decode('utf-8')
     data_offset = 4 + ts_len
     msg_len = int.from_bytes(data[data_offset:data_offset+4], 'big')
     raw_data = data[data_offset+4:data_offset+4+msg_len]
-    return ts, raw_data.decode('utf-8')
+    return ts, raw_data.decode('utf-8'), addr  # Return timestamp, message, and address
+
+
+def send_udp(sock, addr, message):
+    if isinstance(message, str):    message = message.encode('utf-8')
+    ts_len, ts_bytes = get_timestamp_bytes()
+    msg_len = len(message).to_bytes(4, 'big')
+    full_message = ts_len + ts_bytes + msg_len + message
+    sock.sendto(full_message, addr)
+
 
 
 def wait_for_udp_server(host='127.0.0.1', port=5000, timeout=10):
@@ -213,7 +234,7 @@ def wait_for_udp_server(host='127.0.0.1', port=5000, timeout=10):
         while time.time() - start < timeout :
             if keyboard.is_pressed('esc'): break
             try:
-                sock.sendto(b"PING", (host, port))
+                send_udp(sock, (host, port), "PING")
                 sock.recvfrom(4096)
                 return
             except (socket.timeout, ConnectionResetError):
@@ -228,6 +249,7 @@ def wait_for_tcp_server(host='127.0.0.1', port=5000, timeout=10):
         sock.settimeout(1)
         try:
             sock.connect((host, port))
+            send_tcp(b'PING', sock)  # Send a test message
             sock.close()
             return True
         except (ConnectionRefusedError, socket.timeout):
@@ -257,3 +279,51 @@ def get_free_ports(ip='127.0.0.1', n=1, start=1024, end=65535, timeout=0.5):
     if len(free_ports) < n:
         raise RuntimeError("Not enough free ports found.")
     return free_ports
+
+# ----------------------------
+# Server For Filters
+# ----------------------------
+
+class TCPFilterClientHandler(TCPClientHandler):
+
+    def __init__(self, conn, addr, server):
+        super().__init__(conn, addr, server)
+
+    def run(self):
+        try:
+            while not self.server._stop.is_set():
+                _, matrix = recv_tcp(self.conn)
+                # Handle filters sent from client
+                msg = matrix.decode('utf-8', errors='ignore') if isinstance(matrix, bytes) else ""
+                if msg.startswith('FILTERS'):   self.handle_filter_command(msg)
+        except Exception as e:
+            print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
+        finally:
+            try:    self.server.remove_client(self.conn)
+            except: pass
+            self.conn.close()
+
+    def handle_filter_command(self, msg):
+        parts = msg.split('/')
+        try:
+            if len(parts) == 1:
+                if self.server.node.filter is not None:
+                    print(f"[{self.server.serverName}] Filter reset")
+                self.server.node.filter = None
+                return
+            if len(parts) == 3:
+                hp = int(parts[1][2:])
+                lp = int(parts[2][2:])
+                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['samplingRate'], 'bandpass')
+            elif parts[1].startswith('hp'):
+                hp = int(parts[1][2:])
+                filt = RealTimeButterFilter(2, hp, self.server.node.info['samplingRate'], 'highpass')
+            elif parts[1].startswith('lp'):
+                lp = int(parts[1][2:])
+                filt = RealTimeButterFilter(2, lp, self.server.node.info['samplingRate'], 'lowpass')
+            else:
+                return
+            self.server.node.filter = filt
+            print(f"[{self.server.serverName}] Filter set: {msg}")
+        except Exception as e:
+            print(f"[{self.server.serverName}] Filter parse error: {e}")

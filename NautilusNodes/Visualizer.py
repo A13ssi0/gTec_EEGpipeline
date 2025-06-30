@@ -2,7 +2,7 @@ import numpy as np
 import pyqtgraph as pg
 import time, socket, io, ast
 from utils.buffer import BufferVisualizer
-from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server
+from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp
 
 HOST = '127.0.0.1'
 
@@ -22,8 +22,8 @@ class Visualizer:
         wait_for_tcp_server(self.host, self.data_port)
 
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.sendto(b"GET_INFO", (self.host, self.info_port))
-            ts, info_str = recv_udp(sock)
+            send_udp(sock, (self.host,self.info_port), "GET_INFO")  # Request info from the server
+            ts, info_str, addr = recv_udp(sock)
             try:
                 self.info = ast.literal_eval(info_str)
             except Exception as e:
@@ -34,6 +34,7 @@ class Visualizer:
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.socket:
             self.socket.connect((self.host, self.data_port))
+            send_tcp(b'FILTERS', self.socket)
             print(f"[{self.name}] Connected. Waiting for data...")
             self.setup()
             print(f"[{self.name}] Starting the visualization")
@@ -46,9 +47,10 @@ class Visualizer:
             cutHp = f'/hp{hp}' if hp else ''
             cutLp = f'/lp{lp}' if lp else ''
             message = f'FILTERS{cutHp}{cutLp}'
-            self.socket.sendall(message.encode('utf-8'))
+            send_tcp(message.encode('utf-8'), self.socket)
         else:
-            self.socket.sendall(b'FILTERS')
+            send_tcp('FILTERS', self.socket)
+        
 
     def on_filter_toggled(self):
         self.on_number_entered()
