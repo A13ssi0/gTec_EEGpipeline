@@ -1,10 +1,10 @@
 import socket
 import numpy as np
-import pickle
 import io
 from server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server
 from RealTimeButterFilter import RealTimeButterFilter
 import keyboard
+import ast  # For safely converting string dicts
 
 HOST = '127.0.0.1'
 
@@ -26,12 +26,18 @@ class NautilusFilter:
         # Wait and retrieve info from UDP server
         wait_for_udp_server(self.host, self.info_port)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            udp_sock.sendto(pickle.dumps('GET_INFO'), (self.host, self.info_port))
-            self.info = recv_udp(udp_sock)
+            udp_sock.sendto(b"GET_INFO", (self.host, self.info_port))
+            ts, raw_info = recv_udp(udp_sock)
+            try:
+                self.info = ast.literal_eval(raw_info)  # safely parse string dict
+            except Exception as e:
+                print(f"[{self.name}] Failed to parse info: {e}")
+                self.info = {}
 
         print(f"[{self.name}] Received info dictionary")
+        # Wait for TCP data source
         wait_for_tcp_server(self.host, self.data_port)
-        # Connect to data source (acquisition stream)
+
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_sock:
                 tcp_sock.connect((self.host, self.data_port))
@@ -39,17 +45,18 @@ class NautilusFilter:
 
                 while not self.stop:
                     try:
-                        length = int.from_bytes(recv_tcp(tcp_sock, 4), 'big')
-                        data = recv_tcp(tcp_sock, length)
-                        # matrix_bytes = pickle.loads(raw_data)
-                        matrix = np.load(io.BytesIO(data))
-                        if self.filter is not None: matrix = self.filter.filter(matrix)
+                        ts, matrix = recv_tcp(tcp_sock)
+
+                        if self.filter is not None:
+                            matrix = self.filter.filter(matrix)
+
                         self.data_socket.broadcast(matrix)
 
-                        if keyboard.is_pressed('F1'): self.stop = True
+                        if keyboard.is_pressed('F1'):
+                            self.stop = True
 
                     except Exception as e:
-                        print(f"[{self.name}] Data processing error:", e)
+                        print(f"[{self.name}] Data processing error: {e}")
                         break
         finally:
             self.close()

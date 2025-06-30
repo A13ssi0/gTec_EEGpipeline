@@ -1,6 +1,6 @@
 import numpy as np
 import pyqtgraph as pg
-import time, socket, pickle, io
+import time, socket, io, ast
 from buffer import BufferVisualizer
 from server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server
 
@@ -10,7 +10,7 @@ class NautilusVisualizer:
     def __init__(self, data_port=12345, info_port=54321, lenWindow=10):
         self.name = 'Visualizer'
         self.lenWindow = lenWindow
-        self.counter = 0
+        # self.counter = 0
         self.host = HOST
         self.data_port = data_port
         self.info_port = info_port
@@ -20,11 +20,17 @@ class NautilusVisualizer:
     def run(self):
         wait_for_udp_server(self.host, self.info_port)
         wait_for_tcp_server(self.host, self.data_port)
-        
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.sendto(pickle.dumps('GET_INFO'), (self.host, self.info_port))
-        self.info = recv_udp(sock)
-        print(f"[{self.name}] Received info dictionary")
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.sendto(b"GET_INFO", (self.host, self.info_port))
+            ts, info_str = recv_udp(sock)
+            try:
+                self.info = ast.literal_eval(info_str)
+            except Exception as e:
+                print(f"[{self.name}] Failed to parse info: {e}")
+                return
+            print(f"[{self.name}] Received info dictionary")
+            
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.socket:
             self.socket.connect((self.host, self.data_port))
@@ -32,7 +38,6 @@ class NautilusVisualizer:
             self.setup()
             print(f"[{self.name}] Starting the visualization")
             self.app.exec()
-        self.socket.close()
 
     def on_number_entered(self):
         if self.filter_checkbox.isChecked():
@@ -41,23 +46,17 @@ class NautilusVisualizer:
             cutHp = f'/hp{hp}' if hp else ''
             cutLp = f'/lp{lp}' if lp else ''
             message = f'FILTERS{cutHp}{cutLp}'
-            self.socket.sendall(message.encode())
+            self.socket.sendall(message.encode('utf-8'))
         else:
             self.socket.sendall(b'FILTERS')
 
-
     def on_filter_toggled(self):
-        if self.filter_checkbox.isChecked():    self.on_number_entered()  # Send current filter config
-        else:                                   self.socket.sendall(b'FILTERS') 
+        self.on_number_entered()
 
     def on_car_toggled(self):
-        if self.car_checkbox.isChecked():
-            print(f"[{self.name}] Applying CAR")
-            self.applyCAR = True
-        else:
-            print(f"[{self.name}] Disabling CAR")
-            self.applyCAR = False
-        
+        self.applyCAR = self.car_checkbox.isChecked()
+        status = "Applying CAR" if self.applyCAR else "Disabling CAR"
+        print(f"[{self.name}] {status}")
 
     def setup(self):
         nChannels = len(self.info['channels'])
@@ -99,15 +98,15 @@ class NautilusVisualizer:
         self.plot = self.win.addPlot()
         self.plot.invertY(True)
         self.plot.setXRange(0, self.buffer.data.shape[0], padding=0)
-        self.plot.enableAutoRange(x=False, y=True)       #   ________________________________________canche the autorange in y axis after deciding the dimesnios
+        self.plot.enableAutoRange(x=False, y=True)
 
         y_axis = self.plot.getAxis('left')
         custom_ticks = list(zip(self.offset[::-1], self.info['channels'][::-1]))
-        y_axis.setTicks([custom_ticks])  # Only major ticks, no minor ticks
+        y_axis.setTicks([custom_ticks])
         y_axis.setStyle(tickLength=0)
 
         x_axis = self.plot.getAxis('bottom')
-        x_axis.setTicks([])  # No ticks at all
+        x_axis.setTicks([])
 
         self.curves = [
             self.plot.plot(pen=pg.mkPen(color=pg.intColor(i), width=1))
@@ -117,7 +116,7 @@ class NautilusVisualizer:
         interval = 1000 * self.info['dataChunkSize'] // self.info['samplingRate']
         self.plot_timer = pg.QtCore.QTimer()
         self.plot_timer.timeout.connect(self.update_plot)
-        self.plot_timer.start(max(5, interval // 2))  # ensure reasonable interval
+        self.plot_timer.start(max(5, interval // 2))
 
         self.data_timer = pg.QtCore.QTimer()
         self.data_timer.timeout.connect(self.handle_data)
@@ -131,35 +130,35 @@ class NautilusVisualizer:
         input_field.setFixedWidth(60)
         input_field.setPlaceholderText("/")
         input_field.returnPressed.connect(self.on_number_entered)
-
         layout.addWidget(label)
         layout.addWidget(input_field)
         return input_field
 
     def keyPressEvent(self, event):
         if event.key() == pg.QtCore.Qt.Key.Key_F2:
-            print("[Visualizer] Escape key pressed, exiting.")
+            print("[Visualizer] F2 key pressed, exiting.")
             self.app.quit()
 
     def update_plot(self):
-        if self.counter >= 500:
-            print(f"Time elapsed: {time.time() - self.last_plot_time:.2f} s")
-            self.last_plot_time = time.time()
-            self.counter = 0
-        if self.counter == 0: self.last_plot_time = time.time()
+        # if self.counter >= 500:
+        #     print(f"Time elapsed: {time.time() - self.last_plot_time:.2f} s")
+        #     self.last_plot_time = time.time()
+        #     self.counter = 0
+        # if self.counter == 0:
+        #     self.last_plot_time = time.time()
         data = self.buffer.data
         for i, curve in enumerate(self.curves):
             curve.setData(data[:, i] + self.offset[i])
 
     def handle_data(self):
         try:
-            length = int.from_bytes(recv_tcp(self.socket, 4), 'big')
-            raw_data = recv_tcp(self.socket, length)
-            # matrix_bytes = pickle.loads(raw_data)
-            matrix = np.load(io.BytesIO(raw_data))
-            if self.applyCAR:  matrix -= np.mean(matrix, axis=0, keepdims=True)
+            ts, matrix = recv_tcp(self.socket)
+            if self.applyCAR:
+                matrix -= np.mean(matrix, axis=1, keepdims=True)
             self.buffer.add_data(matrix)
-            self.counter += self.info['dataChunkSize']
+            # ts = time.strptime(ts, '%Y-%m-%d %H:%M:%S')
+            # print(f"[{self.name}] Info with a delay of {time.mktime(time.localtime()) - time.mktime(ts):.5f}")
+            # self.counter += self.info['dataChunkSize']
         except Exception as e:
             print("[Visualizer] Error or disconnected:", e)
             self.app.quit()

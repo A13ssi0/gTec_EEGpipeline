@@ -51,7 +51,7 @@ class NautilusAcquisition:
             #     break
 
             # Preallocate for performance
-            data = np.random.randn(self.dataChunkSize, n_channels).astype(np.float32)
+            data = np.random.randn(self.dataChunkSize, n_channels).astype(np.float32)*1000
 
             if not self.data_callback(data):
                 break

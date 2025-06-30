@@ -7,6 +7,7 @@ import pickle
 import io
 from server import recv_tcp, recv_udp, wait_for_udp_server
 import time
+import ast  # For safely converting string dicts
 
 HOST = '127.0.0.1'
 
@@ -22,8 +23,13 @@ class NautilusRecorder:
     def run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         wait_for_udp_server(self.host, self.info_port)
-        sock.sendto(pickle.dumps('GET_INFO'), (self.host, self.info_port))
-        self.info = recv_udp(sock)
+        sock.sendto(b"GET_INFO", (self.host, self.info_port))
+        ts, info_str = recv_udp(sock)
+        try:
+            self.info = ast.literal_eval(info_str)
+        except Exception as e:
+            print(f"[{self.name}] Failed to parse info: {e}")
+            return
         print(f"[{self.name}] Received info dictionary")
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -32,12 +38,10 @@ class NautilusRecorder:
             print(f"[{self.name}] Starting the recording")
             while True:
                 try:
-                    length = int.from_bytes(recv_tcp(sock, 4), 'big')
-                    data = recv_tcp(sock, length)
+                    ts, data = recv_tcp(sock)
                     # matrix_bytes = pickle.loads(data)
-                    matrix = np.load(io.BytesIO(data))
-                    for row in matrix:    self.file.write(' '.join(map(str, row)) + '\n')
-                    if keyboard.is_pressed('esc'):    
+                    for row in data:    self.file.write(' '.join(map(str, row)) + '\n')
+                    if keyboard.is_pressed('f3'):    
                         print(f"[{self.name}] Escape key pressed, exiting.")
                         break
                 except Exception as e:
