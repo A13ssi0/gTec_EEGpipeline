@@ -3,7 +3,7 @@ import threading
 import numpy as np
 import time
 import io
-from RealTimeButterFilter import RealTimeButterFilter
+from utils.RealTimeButterFilter import RealTimeButterFilter
 import keyboard
 
 def get_timestamp_bytes():

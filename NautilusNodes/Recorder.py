@@ -5,13 +5,13 @@ import os
 import keyboard
 import pickle
 import io
-from server import recv_tcp, recv_udp, wait_for_udp_server
+from utils.server import recv_tcp, recv_udp, wait_for_udp_server
 import time
 import ast  # For safely converting string dicts
 
 HOST = '127.0.0.1'
 
-class NautilusRecorder:
+class Recorder:
     def __init__(self, data_port=12345, info_port=54321, fileName='noName'):
         self.fileName = fileName
         self.file = open(f"{fileName}.txt", "w")

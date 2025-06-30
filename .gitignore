@@ -4,3 +4,4 @@
 *.pdf
 __pycache__
 zz.py
+spectogramValidation.py

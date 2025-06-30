@@ -1,8 +1,9 @@
 import subprocess
 import time
-from server import get_free_ports
+from utils.server import get_free_ports
 import sys
 
+    
 host = '127.0.0.1'
 free_ports = get_free_ports(ip=host, n=5)
 
@@ -22,7 +23,7 @@ lenWindow = '10'  # seconds for the visualizer to run
 rec_port = eeg_port
 
 
-subprocess.Popen([sys.executable, "test_acquisition.py", eeg_port, info_port, device])  # esc 
-subprocess.Popen([sys.executable, "test_filter.py", filter_portIN, filter_portOUT, info_port])  # F1
-subprocess.Popen([sys.executable, "test_visualizer.py", visualizer_port, info_port, lenWindow]) # F2
-subprocess.Popen([sys.executable, "test_recorder.py", rec_port, info_port]) # F3
+subprocess.Popen([sys.executable, "launchers\launchAcquisition.py", eeg_port, info_port, device])  # esc 
+subprocess.Popen([sys.executable, "launchers\launchFilter.py", filter_portIN, filter_portOUT, info_port])  # F1
+subprocess.Popen([sys.executable, "launchers\launchVisualizer.py", visualizer_port, info_port, lenWindow]) # F2
+subprocess.Popen([sys.executable, "launchers\launchRecorder.py", rec_port, info_port]) # F3

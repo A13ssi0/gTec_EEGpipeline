@@ -1,14 +1,11 @@
 import socket
-import numpy as np
-import io
-from server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server
-from RealTimeButterFilter import RealTimeButterFilter
+from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server
 import keyboard
 import ast  # For safely converting string dicts
 
 HOST = '127.0.0.1'
 
-class NautilusFilter:
+class Filter:
     def __init__(self, data_port=12345, output_port=23456, info_port=54321):
         self.host = HOST
         self.data_port = data_port

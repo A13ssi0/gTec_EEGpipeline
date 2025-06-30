@@ -125,118 +125,118 @@ def proc_spectrogram(data, wlength, wshift, pshift, samplerate, mlength=None):
     return features, f
 
 
-import numpy as np
-from scipy.fft import rfft, rfftfreq
+# import numpy as np
+# from scipy.fft import rfft, rfftfreq
 
-class Pwelch:
+# class Pwelch:
 
-    def __init__(self, wlength, wshift, pshift, samplerate, mlength=None):
-        self.config.wlength = wlength
-        self.config.wshift = wshift
-        self.config.wshift = wshift
-        self.config.fs = samplerate
+#     def __init__(self, wlength, wshift, pshift, samplerate, mlength=None):
+#         self.config.wlength = wlength
+#         self.config.wshift = wshift
+#         self.config.wshift = wshift
+#         self.config.fs = samplerate
 
-        self._window = config.window
-        self._wsig = np.zeros(config.wlength)
-        self._wpxx = np.zeros(config.nfft)
-
-
-    def compute(self, in_data, out_data):
-        nsamples = in_data.size
-        wlength = self.config.wlength
-        novl = self.config.novl
-        nfft = self.config.nfft
-        fs = self.config.fs
-
-        nsegments = self.compute_nsegments(wlength, novl, nsamples)
-        wnorm = self._window.GetWindowNorm()
-        pxxnorm = 0
-
-        wsegm = np.zeros(wlength)
-        pxx = np.zeros(nfft)
-
-        segId = 0
-
-        while segId < nsegments:
-            sstart = segId * (wlength - novl)
-            wsegm = in_data[sstart:sstart + wlength]
-            self._window.Apply(wsegm, self._wsig)
-            self._wpxx = rfft(self._wsig)
-
-            pxx[0] += np.power(self._wpxx[0], 2)
-            pxx[wlength // 2] += np.power(self._wpxx[wlength // 2], 2)
-
-            pxx[1:wlength // 2] += (np.power(self._wpxx[1:wlength // 2], 2) +
-                                    np.power(self._wpxx[wlength // 2 + 1:wlength - 1][::-1], 2))
-
-            segId += 1
-
-        pxxnorm = (nsegments * wnorm * fs * wlength) / 2.0
-
-        pxx[0] /= (2.0 * pxxnorm)
-        pxx[wlength // 2] /= (2.0 * pxxnorm)
-        pxx[1:wlength // 2] /= pxxnorm
-
-        out_data[:] = pxx
+#         self._window = config.window
+#         self._wsig = np.zeros(config.wlength)
+#         self._wpxx = np.zeros(config.nfft)
 
 
+#     def compute(self, in_data, out_data):
+#         nsamples = in_data.size
+#         wlength = self.config.wlength
+#         novl = self.config.novl
+#         nfft = self.config.nfft
+#         fs = self.config.fs
 
-import numpy as np
-from typing import Optional
+#         nsegments = self.compute_nsegments(wlength, novl, nsamples)
+#         wnorm = self._window.GetWindowNorm()
+#         pxxnorm = 0
 
-def compute(self, in_signal: np.ndarray, out: np.ndarray) -> None:
-    """
-    Compute Welch's power spectral density estimate.
+#         wsegm = np.zeros(wlength)
+#         pxx = np.zeros(nfft)
+
+#         segId = 0
+
+#         while segId < nsegments:
+#             sstart = segId * (wlength - novl)
+#             wsegm = in_data[sstart:sstart + wlength]
+#             self._window.Apply(wsegm, self._wsig)
+#             self._wpxx = rfft(self._wsig)
+
+#             pxx[0] += np.power(self._wpxx[0], 2)
+#             pxx[wlength // 2] += np.power(self._wpxx[wlength // 2], 2)
+
+#             pxx[1:wlength // 2] += (np.power(self._wpxx[1:wlength // 2], 2) +
+#                                     np.power(self._wpxx[wlength // 2 + 1:wlength - 1][::-1], 2))
+
+#             segId += 1
+
+#         pxxnorm = (nsegments * wnorm * fs * wlength) / 2.0
+
+#         pxx[0] /= (2.0 * pxxnorm)
+#         pxx[wlength // 2] /= (2.0 * pxxnorm)
+#         pxx[1:wlength // 2] /= pxxnorm
+
+#         out_data[:] = pxx
+
+
+
+# import numpy as np
+# from typing import Optional
+
+# def compute(self, in_signal: np.ndarray, out: np.ndarray) -> None:
+#     """
+#     Compute Welch's power spectral density estimate.
     
-    Args:
-        in_signal: Input signal as numpy array
-        out: Output array to store the power spectral density
-    """
+#     Args:
+#         in_signal: Input signal as numpy array
+#         out: Output array to store the power spectral density
+#     """
     
-    nsamples = in_signal.shape[0]
-    wlength = self.config.wlength
-    novl = self.config.novl
-    nfft = self.config.nfft
-    fs = self.config.fs
+#     nsamples = in_signal.shape[0]
+#     wlength = self.config.wlength
+#     novl = self.config.novl
+#     nfft = self.config.nfft
+#     fs = self.config.fs
     
-    nsegments = self.compute_nsegments(wlength, novl, nsamples)
-    wnorm = self._window.GetWindowNorm()
+#     nsegments = self.compute_nsegments(wlength, novl, nsamples)
+#     wnorm = self._window.GetWindowNorm()
     
-    wsegm = np.zeros(wlength)
-    pxx = np.zeros(nfft)
+#     wsegm = np.zeros(wlength)
+#     pxx = np.zeros(nfft)
     
-    segId = 0
+#     segId = 0
     
-    while segId < nsegments:
+#     while segId < nsegments:
         
-        sstart = segId * (wlength - novl)
-        wsegm = in_signal[sstart:sstart + wlength].copy()
-        self._window.Apply(wsegm, self._wsig)
+#         sstart = segId * (wlength - novl)
+#         wsegm = in_signal[sstart:sstart + wlength].copy()
+#         self._window.Apply(wsegm, self._wsig)
         
-        # Execute real-to-real FFT (equivalent to fftw_execute_r2r)
-        self._wpxx[:] = np.fft.rfft(self._wsig, n=wlength * 2 - 2)[:wlength]
+#         # Execute real-to-real FFT (equivalent to fftw_execute_r2r)
+#         self._wpxx[:] = np.fft.rfft(self._wsig, n=wlength * 2 - 2)[:wlength]
         
-        # out spans from 0 to wLength/2 (NFFT = wLength/2 + 1)
-        # ex. 	wLength  = n = 256
-        #	NFFT          = 129 (0:1:128)
-        #
-        #	out(0) 	 = wpxx(0)^2 	[Only real part - Half complex vector]
-        #	out(n/2) = wpxx(n/2)^2	[Only real part - wlenght is even - Half complex vector]
-        #	out(k) 	 = wpxx(k)^2 + wpxx(n-k)^2, k = 1 : (n/2 - 1) [Real and imagery part]
+#         # out spans from 0 to wLength/2 (NFFT = wLength/2 + 1)
+#         # ex. 	wLength  = n = 256
+#         #	NFFT          = 129 (0:1:128)
+#         #
+#         #	out(0) 	 = wpxx(0)^2 	[Only real part - Half complex vector]
+#         #	out(n/2) = wpxx(n/2)^2	[Only real part - wlenght is even - Half complex vector]
+#         #	out(k) 	 = wpxx(k)^2 + wpxx(n-k)^2, k = 1 : (n/2 - 1) [Real and imagery part]
         
-        pxx[0] += np.power(self._wpxx[0], 2)
-        pxx[wlength // 2] += np.power(self._wpxx[wlength // 2], 2)
+#         pxx[0] += np.power(self._wpxx[0], 2)
+#         pxx[wlength // 2] += np.power(self._wpxx[wlength // 2], 2)
         
-        pxx[1:wlength//2] += (np.power(self._wpxx[1:wlength//2], 2) + 
-                              np.power(self._wpxx[wlength//2 + 1:wlength][::-1], 2))
+#         pxx[1:wlength//2] += (np.power(self._wpxx[1:wlength//2], 2) + 
+#                               np.power(self._wpxx[wlength//2 + 1:wlength][::-1], 2))
         
-        segId += 1
+#         segId += 1
     
-    # NORMALIZATION FACTOR
-    pxxnorm = (nsegments * wnorm * fs * wlength) / 2.0
+#     # NORMALIZATION FACTOR
+#     pxxnorm = (nsegments * wnorm * fs * wlength) / 2.0
     
-    pxx[0] = pxx[0] / (2.0 * pxxnorm)
-    pxx[wlength // 2] = pxx[wlength // 2] / (2.0 * pxxnorm)
-    pxx[1:wlength//2] = pxx[1:wlength//2] / pxxnorm
+#     pxx[0] = pxx[0] / (2.0 * pxxnorm)
+#     pxx[wlength // 2] = pxx[wlength // 2] / (2.0 * pxxnorm)
+#     pxx[1:wlength//2] = pxx[1:wlength//2] / pxxnorm
     
-    out[:] = pxx
+#     out[:] = pxx

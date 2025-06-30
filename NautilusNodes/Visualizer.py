@@ -1,12 +1,12 @@
 import numpy as np
 import pyqtgraph as pg
 import time, socket, io, ast
-from buffer import BufferVisualizer
-from server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server
+from utils.buffer import BufferVisualizer
+from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server
 
 HOST = '127.0.0.1'
 
-class NautilusVisualizer:
+class Visualizer:
     def __init__(self, data_port=12345, info_port=54321, lenWindow=10):
         self.name = 'Visualizer'
         self.lenWindow = lenWindow

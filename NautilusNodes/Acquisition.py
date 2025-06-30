@@ -2,13 +2,13 @@ import numpy as np
 import pygds
 import time
 import keyboard
-import server
-import threading
+import utils.server as server
+from scipy.io import loadmat
 
 HOST = '127.0.0.1'
 
 
-class NautilusAcquisition:
+class Acquisition:
     def __init__(self, data_port=12345, info_port=54321, device=None, samplingRate=500, dataChunkSize=20):
         self.name = 'Acquisition'
         self.stop = False
@@ -32,11 +32,9 @@ class NautilusAcquisition:
         self.info_socket.start()
         self.data_socket.start()
 
-        if self.device == 'test':
-            print(f"[{self.name}] Starting simulated acquisition...")
-            self._run_test_mode()
-        else:
-            self._run_real_device()
+        if self.device == 'test':       self._run_test_mode()
+        elif '.mat' in self.device:     self._run_mat_device()
+        else:                           self._run_real_device()
 
         self.close()
 
@@ -45,18 +43,29 @@ class NautilusAcquisition:
         n_channels = len(self.channels)
         sleep_time = max(0, dt - 0.001)
 
+        print(f"[{self.name}] Starting simulated acquisition...")
+
         while not self.stop:
-            # if keyboard.is_pressed('esc'):
-            #     self.stop = True
-            #     break
-
-            # Preallocate for performance
             data = np.random.randn(self.dataChunkSize, n_channels).astype(np.float32)*1000
-
-            if not self.data_callback(data):
-                break
-
+            self.data_callback(data)
             time.sleep(sleep_time)
+
+
+    def _run_mat_device(self):
+        dt = self.dataChunkSize / self.samplingRate
+        sleep_time = max(0, dt - 0.001)
+        mat = loadmat(self.device)
+        data = mat['data']
+        print(f"[{self.name}] Running acquisition with MAT file: {self.device}")
+        pointer = 0
+        while not self.stop:
+            self.data_callback(data[pointer:pointer + self.dataChunkSize, :])
+            pointer += self.dataChunkSize
+            if pointer + self.dataChunkSize >= data.shape[0]:   
+                print(f"[{self.name}] Reached end of data, restarting from beginning.")
+                pointer = 0
+            time.sleep(sleep_time)
+            
 
     def _run_real_device(self):
         self.nautilus = pygds.GDS(gds_device=self.device)
@@ -68,6 +77,7 @@ class NautilusAcquisition:
 
         print(f"[{self.name}] Starting real acquisition...")
         self.nautilus.GetData(self.dataChunkSize, more=self.data_callback)
+
 
     def data_callback(self, data):
         self.nSamples += data.shape[0]
