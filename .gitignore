@@ -1,7 +1,10 @@
 *.txt
 *.mat
+*.ipynb
+*.m
 .vscode
 *.pdf
 __pycache__
 zz.py
 spectogramValidation.py
+recordings

@@ -5,6 +5,8 @@ import keyboard
 import utils.server as server
 from scipy.io import loadmat
 
+from datetime import datetime
+
 HOST = '127.0.0.1'
 
 
@@ -13,6 +15,7 @@ class Acquisition:
         self.name = 'Acquisition'
         self.stop = False
         self.nSamples = 0
+        # self.AAAAAAAA = open(f"zzzzAcquisition.txt", "w")
         self.device = device
         self.samplingRate = samplingRate
         self.dataChunkSize = dataChunkSize
@@ -69,8 +72,7 @@ class Acquisition:
 
     def _run_real_device(self):
         self.nautilus = pygds.GDS(gds_device=self.device)
-        if self.device is None:
-            self.device = self.nautilus.Name
+        if self.device is None: self.device = self.nautilus.Name
         self.info['device'] = [self.device]
         self.nautilus.SamplingRate = self.samplingRate
         self.nautilus.SetConfiguration()
@@ -80,6 +82,8 @@ class Acquisition:
 
 
     def data_callback(self, data):
+        # k = datetime.now().strftime("%H:%M:%S.%f")
+        # self.AAAAAAAA.write(f"{k}\n")
         self.nSamples += data.shape[0]
 
         try:
@@ -91,6 +95,7 @@ class Acquisition:
         return not self.stop
 
     def close(self):
+        # self.AAAAAAAA.close()
         self.data_socket.close()
         self.info_socket.close()
         if hasattr(self, 'nautilus') and self.nautilus:

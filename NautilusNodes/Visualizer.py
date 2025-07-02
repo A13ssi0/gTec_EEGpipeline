@@ -3,6 +3,7 @@ import pyqtgraph as pg
 import time, socket, io, ast
 from utils.buffer import BufferVisualizer
 from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp
+from datetime import datetime, date
 
 HOST = '127.0.0.1'
 
@@ -155,11 +156,16 @@ class Visualizer:
     def handle_data(self):
         try:
             ts, matrix = recv_tcp(self.socket)
+            # a = datetime.now().time()
             if self.applyCAR:
                 matrix -= np.mean(matrix, axis=1, keepdims=True)
             self.buffer.add_data(matrix)
-            # ts = time.strptime(ts, '%Y-%m-%d %H:%M:%S')
-            # print(f"[{self.name}] Info with a delay of {time.mktime(time.localtime()) - time.mktime(ts):.5f}")
+
+            # ts = datetime.strptime(ts, "%H:%M:%S.%f").time()
+            # dt_a = datetime.combine(date.today(), a)
+            # dt_b = datetime.combine(date.today(), ts)
+
+            # print(f"[{self.name}] Info with a delay of {dt_a - dt_b}")
             # self.counter += self.info['dataChunkSize']
         except Exception as e:
             print("[Visualizer] Error or disconnected:", e)

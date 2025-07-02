@@ -2,6 +2,7 @@ import socket
 from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp
 import keyboard
 import ast  # For safely converting string dicts
+from datetime import datetime, date
 
 HOST = '127.0.0.1'
 
@@ -12,7 +13,7 @@ class Filter:
         self.output_port = output_port
         self.info_port = info_port
         self.name = 'Filter'
-        self.filter = None
+        self.filter = []
         self.stop = False
 
         self.data_socket = TCPServer(host=self.host, port=self.output_port, serverName=self.name, node=self)
@@ -44,9 +45,15 @@ class Filter:
                 while not self.stop:
                     try:
                         ts, matrix = recv_tcp(tcp_sock)
+                        # a = datetime.now().time()
+                        # ts = datetime.strptime(ts, "%H:%M:%S.%f").time()
+                        # dt_a = datetime.combine(date.today(), a)
+                        # dt_b = datetime.combine(date.today(), ts)
 
-                        if self.filter is not None:
-                            matrix = self.filter.filter(matrix)
+                        # print(f"[{self.name}] Info with a delay of {dt_a - dt_b}")
+
+                        if self.filter: 
+                            for filt in self.filter: matrix = filt.filter(matrix)
                        
                         self.data_socket.broadcast(matrix)
 

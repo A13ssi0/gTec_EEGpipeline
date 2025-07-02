@@ -2,6 +2,7 @@ from matplotlib import mlab
 from scipy import signal
 import warnings
 import numpy as np
+import datetime
 
 def proc_spectrogram(data, wlength, wshift, pshift, samplerate, mlength=None):
     """
@@ -124,6 +125,8 @@ def proc_spectrogram(data, wlength, wshift, pshift, samplerate, mlength=None):
     
     return features, f
 
+def getDateTime_fromStr(time_str):
+    return datetime.strptime(time_str, "%H:%M:%S.%f").time()
 
 # import numpy as np
 # from scipy.fft import rfft, rfftfreq

@@ -12,12 +12,14 @@ import time
 import io
 from py_utils.signal_processing import RealTimeButterFilter
 import keyboard
+from datetime import datetime
 
 
 def get_timestamp_bytes():
-    ts = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+    ts = datetime.now().strftime("%H:%M:%S.%f")
     ts_bytes = ts.encode('utf-8')
     return len(ts_bytes).to_bytes(4, 'big'), ts_bytes
+
 
 class UDPServer(threading.Thread):
     def __init__(self, host='127.0.0.1', port=5000, serverName='UDP', node=None):
@@ -40,6 +42,7 @@ class UDPServer(threading.Thread):
 
                 if msg == 'GET_INFO' and self.node: send_udp(self.sock, addr, str(self.node.info))
                 elif msg == 'PING':     send_udp(self.sock, addr, 'PONG')
+                elif msg.startswith('ev'): self.node.save_event(ts, msg[2:])  # Save event with timestamp
                 else:   print(f"[{self.serverName}] Unknown message from {addr}: {msg}")
 
             except Exception as e:
@@ -295,7 +298,8 @@ class TCPFilterClientHandler(TCPClientHandler):
                 _, matrix = recv_tcp(self.conn)
                 # Handle filters sent from client
                 msg = matrix.decode('utf-8', errors='ignore') if isinstance(matrix, bytes) else ""
-                if msg.startswith('FILTERS'):   self.handle_filter_command(msg)
+                if msg.startswith('FILTERS'):               self.handle_filter_command(msg)
+                elif msg.startswith('APPEND_FILTERS'):      self.handle_filter_command(msg, append=True)
         except Exception as e:
             print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
         finally:
@@ -303,13 +307,12 @@ class TCPFilterClientHandler(TCPClientHandler):
             except: pass
             self.conn.close()
 
-    def handle_filter_command(self, msg):
+    def handle_filter_command(self, msg, append=False):
         parts = msg.split('/')
         try:
             if len(parts) == 1:
-                if self.server.node.filter is not None:
-                    print(f"[{self.server.serverName}] Filter reset")
-                self.server.node.filter = None
+                if self.server.node.filter :    print(f"[{self.server.serverName}] Filter reset")
+                self.server.node.filter = []
                 return
             if len(parts) == 3:
                 hp = int(parts[1][2:])
@@ -323,7 +326,8 @@ class TCPFilterClientHandler(TCPClientHandler):
                 filt = RealTimeButterFilter(2, lp, self.server.node.info['samplingRate'], 'lowpass')
             else:
                 return
-            self.server.node.filter = filt
+            if append:  self.server.node.filter.append([filt])
+            else:       self.server.node.filter = [filt]
             print(f"[{self.server.serverName}] Filter set: {msg}")
         except Exception as e:
             print(f"[{self.server.serverName}] Filter parse error: {e}")
