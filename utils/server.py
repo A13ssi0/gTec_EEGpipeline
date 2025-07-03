@@ -317,13 +317,13 @@ class TCPFilterClientHandler(TCPClientHandler):
             if len(parts) == 3:
                 hp = int(parts[1][2:])
                 lp = int(parts[2][2:])
-                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['samplingRate'], 'bandpass')
+                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['SampleRate'], 'bandpass')
             elif parts[1].startswith('hp'):
                 hp = int(parts[1][2:])
-                filt = RealTimeButterFilter(2, hp, self.server.node.info['samplingRate'], 'highpass')
+                filt = RealTimeButterFilter(2, hp, self.server.node.info['SampleRate'], 'highpass')
             elif parts[1].startswith('lp'):
                 lp = int(parts[1][2:])
-                filt = RealTimeButterFilter(2, lp, self.server.node.info['samplingRate'], 'lowpass')
+                filt = RealTimeButterFilter(2, lp, self.server.node.info['SampleRate'], 'lowpass')
             else:
                 return
             if append:  self.server.node.filter.append([filt])

@@ -10,11 +10,20 @@ from datetime import datetime, timedelta
 HOST = '127.0.0.1'
 
 class Recorder:
-    def __init__(self, data_port=12345, info_port=54321, event_port=44551, fileName='noName'):
-        self.fileName = fileName
-        self.file = open(f"{fileName}.txt", "w")
-        self.fileTimestamp = open(f"{fileName}_timestamp.txt", "w")
-        self.fileEvents = open(f"{fileName}_events.txt", "w")
+    def __init__(self, data_port=12345, info_port=54321, event_port=44551, subjectCode='noName', recFolder='', runType= '', task=''):
+        self.filePath = f'{recFolder}{subjectCode}'
+        if not os.path.exists(self.filePath):   os.makedirs(self.filePath)
+
+        today = datetime.now().strftime("%Y%m%d")
+        self.filePath += f'/{today}'
+        if not os.path.exists(self.filePath):   os.makedirs(self.filePath)
+
+        now = datetime.now().strftime("%H%M%S")
+        self.filePath += f'/{subjectCode}.{today}.{now}.{runType}.{task}'
+
+        self.file = open(f"{self.filePath}.txt", "w")
+        self.fileTimestamp = open(f"{self.filePath}_timestamp.txt", "w")
+        self.fileEvents = open(f"{self.filePath}_events.txt", "w")
         self.data_port = data_port
         self.info_port = info_port
         self.event_port = event_port
@@ -77,38 +86,55 @@ class Recorder:
         print("Files closed and saved successfully.")
 
     def join_Txts(self):
-        data = np.loadtxt(f"{self.fileName}.txt")
-        timestamps = np.loadtxt(f"{self.fileName}_timestamp.txt", dtype=str)
-        ev = np.loadtxt(f"{self.fileName}_events.txt", dtype=str)
-        events = {'dur': [], 'pos': [], 'typ': []}
+        data = np.loadtxt(f"{self.filePath}.txt")
+        timestamps = np.loadtxt(f"{self.filePath}_timestamp.txt", dtype=str)
+        ev = np.loadtxt(f"{self.filePath}_events.txt", dtype=str)
+        events = {'DUR': [], 'POS': [], 'TYP': []}
 
-        increment = timedelta(seconds=1/self.info['samplingRate'])
+        increment = timedelta(seconds=1/self.info['SampleRate'])
         for i in range(1,len(timestamps)):  timestamps[i] = (datetime.strptime(timestamps[i-1], "%H:%M:%S.%f") + increment).strftime("%H:%M:%S.%f")
 
-        ev_times = np.array([datetime.strptime(t, "%H:%M:%S.%f") for t in ev[:,0]])
-        timestamps_dt = np.array([datetime.strptime(t, "%H:%M:%S.%f") for t in timestamps])
-        pos = np.array([int(np.argmin(np.abs([(t - ev_time).total_seconds() for t in timestamps_dt]))) for ev_time in ev_times])
+        if len(ev)>0:
+            ev_times = np.array([datetime.strptime(t, "%H:%M:%S.%f") for t in ev[:,0]])
+            timestamps_dt = np.array([datetime.strptime(t, "%H:%M:%S.%f") for t in timestamps])
+            pos = np.array([int(np.argmin(np.abs([(t - ev_time).total_seconds() for t in timestamps_dt]))) for ev_time in ev_times])
 
-        ev_codes = np.array([int(code) for code in ev[:,1]])
-        start_ev = ev_codes[ev_codes < 0x8000]
-        pos_start = pos[ev_codes < 0x8000]
-        end_ev = ev_codes[ev_codes >= 0x8000]
-        pos_end = pos[ev_codes >= 0x8000]
+            events['TYP'] = np.array([int(code) for code in ev[:,1]])
+            events['POS'] = pos
+            events['DUR'] = np.ones(len(pos), dtype=int)  
 
-        events['typ'] = start_ev
-        events['pos'] = pos_start
+            ev_list = self.compare_counts(events['TYP'])
+            for code in ev_list:
+                pos_start = events['POS'][events['TYP'] == code]
+                pos_end = events['POS'][events['TYP'] == code + 0x8000]
+                events['DUR'][events['TYP'] == code] = pos_end-pos_start 
+            
+            indexes = np.where(np.isin(events['TYP'], [code + 0x8000 for code in ev_list]))[0]
+            events['TYP'] = np.delete(events['TYP'], indexes)
+            events['POS'] = np.delete(events['POS'], indexes)
+            events['DUR'] = np.delete(events['DUR'], indexes)
 
-        dur = []
-        for i, code in enumerate(start_ev):
-            start_pos = pos_start[i]
-            end_idx = np.where(end_ev == code + 0x8000)[0]
-            if len(end_idx) > 0:    end_pos = pos_end[end_idx[0]]
-            else:                   end_pos = start_pos + 1  # Default to next position if no end event found
-            dur.append(end_pos - start_pos)
-        events['dur'] = np.array(dur)
+        h = {'EVENT': events}
+        for key, value in self.info.items():    h[key] = value
+        savemat(f"{self.filePath}.mat", {'s': data, 'h': h})
+        os.remove(f"{self.filePath}.txt")
+        os.remove(f"{self.filePath}_timestamp.txt")
+        os.remove(f"{self.filePath}_events.txt")
 
-        savemat(f"{self.fileName}.mat", {'data': data, 'info': self.info, 'events': events})
-        os.remove(f"{self.fileName}.txt")
-        os.remove(f"{self.fileName}_timestamp.txt")
-        os.remove(f"{self.fileName}_events.txt")
+
+    def compare_counts(self, vec):
+        offset = 0x8000
+        mismatches = []
+        correct = []
+        for x in np.unique(vec[vec < offset]):
+            count_original = sum(1 for v in vec if v == x)
+            count_offset = sum(1 for v in vec if v == x + offset)
+            if count_original != count_offset:  mismatches.append((x, count_original, count_offset))
+            else:                                correct.append((x))
+        if mismatches:
+            print(f"[{self.name}] Mismatches found on events:")
+            for x, c1, c2 in mismatches:    print(f"    -  {x}: {c1} opened vs {c2} closed")
+        return correct
+
+
 

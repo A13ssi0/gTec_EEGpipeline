@@ -63,7 +63,7 @@ class Visualizer:
 
     def setup(self):
         nChannels = len(self.info['channels'])
-        bufferSize = self.info['samplingRate'] * self.lenWindow
+        bufferSize = self.info['SampleRate'] * self.lenWindow
         self.buffer = BufferVisualizer((bufferSize, nChannels))
         self.offset = np.arange(nChannels) * 1000
         self.setupWindow()
@@ -116,7 +116,7 @@ class Visualizer:
             for i in range(self.buffer.data.shape[1])
         ]
 
-        interval = 1000 * self.info['dataChunkSize'] // self.info['samplingRate']
+        interval = 1000 * self.info['dataChunkSize'] // self.info['SampleRate']
         self.plot_timer = pg.QtCore.QTimer()
         self.plot_timer.timeout.connect(self.update_plot)
         self.plot_timer.start(max(5, interval // 2))

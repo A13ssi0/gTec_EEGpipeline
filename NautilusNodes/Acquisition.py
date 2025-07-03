@@ -23,7 +23,7 @@ class Acquisition:
 
         self.info = {
             'device': device,
-            'samplingRate': samplingRate,
+            'SampleRate': samplingRate,
             'dataChunkSize': dataChunkSize,
             'channels': self.channels
         }

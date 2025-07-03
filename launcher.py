@@ -7,11 +7,15 @@ import sys
 host = '127.0.0.1'
 free_ports = get_free_ports(ip=host, n=5)
 
+subjectCode = 'zzRecTest'  # Default subject code
+recFolder = 'C:/Users/aless/Desktop/gNautilus/data/recordings/'
+runType = 'test'  # Default run type
+task = 'mi_bfbh'  # Default task
+
 
 device = None
 
 info_port = str(free_ports[0])  # info port for the sensor
-
 eeg_port = str(free_ports[1])    # sensor receives commands here
 
 filter_portIN = eeg_port # filter receives data here
@@ -23,7 +27,8 @@ lenWindow = '10'  # seconds for the visualizer to run
 rec_port = eeg_port
 event_port = str(44551)  # event port for the sensor
 
+
 subprocess.Popen([sys.executable, "launchers\launchAcquisition.py", eeg_port, info_port])  # esc 
 # subprocess.Popen([sys.executable, "launchers\launchFilter.py", filter_portIN, filter_portOUT, info_port])  # F1
 # subprocess.Popen([sys.executable, "launchers\launchVisualizer.py", visualizer_port, info_port, lenWindow]) # F2
-subprocess.Popen([sys.executable, "launchers\launchRecorder.py", rec_port, info_port, event_port]) # F3
+subprocess.Popen([sys.executable, "launchers\launchRecorder.py", rec_port, info_port, event_port, subjectCode, recFolder, runType, task]) # F3
