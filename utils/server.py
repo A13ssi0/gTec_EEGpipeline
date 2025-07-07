@@ -314,7 +314,11 @@ class TCPFilterClientHandler(TCPClientHandler):
                 if self.server.node.filter :    print(f"[{self.server.serverName}] Filter reset")
                 self.server.node.filter = []
                 return
-            if len(parts) == 3:
+            if len(parts) == 4 and parts[-1] == 'bstop':
+                hp = int(parts[1][2:])
+                lp = int(parts[2][2:])
+                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['SampleRate'], 'bandstop')
+            elif len(parts) == 3:
                 hp = int(parts[1][2:])
                 lp = int(parts[2][2:])
                 filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['SampleRate'], 'bandpass')

@@ -2,7 +2,7 @@ import numpy as np
 
 class Buffer:
     def __init__(self, shape):
-        self.data = np.full(shape,np.nan)
+        self.data = np.zeros(shape)
         self.ptr = 0
         self.isFull = False
 
@@ -18,7 +18,7 @@ class Buffer:
         if not self.isFull and self.ptr == self.data.shape[0]: self.isFull = True  # Buffer was filled completely
 
     def remove_mean(self):
-        mean = np.nanmean(self.data, axis=0)
+        mean = np.mean(self.data, axis=0)
         self.data -= mean
 
 

@@ -31,15 +31,9 @@ def main(task='mi_bfbh', filter_order=2, windowsLength=1, classes=[771, 773]):
     events_dataFrame.columns = [col.lower() for col in events_dataFrame.columns]
     channels = h['channels']
     fs = h['SampleRate']
-    windowsShift = 1/h['dataChunkSize']
+    windowsShift = h['dataChunkSize']/fs
     subjectCode = fileNames[0].split('/')[-3]
 
-
-    #-------------------------------------------------------------------------------   
-    pathLaplacian = 'c:/Users/aless/Desktop/gNautilus/lapMask16Nautilus.mat'
-    laplacian = loadmat(pathLaplacian)
-    laplacian = laplacian['lapMask']
-    lap_signal = signal @ laplacian
 
     # ## -----------------------------------------------------------------------------    
     wantedChannels = channels
@@ -55,6 +49,12 @@ def main(task='mi_bfbh', filter_order=2, windowsLength=1, classes=[771, 773]):
     if len(stopBand)>0: filt_signal = get_bandranges(filt_signal, stopBand, fs, filter_order, 'bandstop')
 
     # if applyLog: filt_signal = utils.get_logpower(filt, fs)  # da sistemare ----------------------------------------------------------------------------------
+
+    #-------------------------------------------------------------------------------   
+    pathLaplacian = 'c:/Users/aless/Desktop/gNautilus/lapMask16Nautilus.mat'
+    laplacian = loadmat(pathLaplacian)
+    laplacian = laplacian['lapMask']
+    lap_signal = signal @ laplacian
 
     # ## ----------------------------------------------------------------------------- Covariances
     [covs, cov_events] = get_trNorm_covariance_matrix(filt_signal, events_dataFrame, windowsLength, windowsShift, fs)
@@ -88,7 +88,6 @@ def main(task='mi_bfbh', filter_order=2, windowsLength=1, classes=[771, 773]):
         'filter_order': filter_order,
         'windowsLength': windowsLength,
         'windowsShift': windowsShift,
-        'wantedChannels': wantedChannels,
         'inv_sqrt_mean_cov': inv_sqrt_mean_cov if doRecenter else None,
         'classes': classes,
         'channels': channels,
