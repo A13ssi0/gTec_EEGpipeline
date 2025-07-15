@@ -37,14 +37,14 @@ def main(task='mi_bfbh', filter_order=2, windowsLength=1, classes=[771, 773]):
 
     # ## -----------------------------------------------------------------------------    
     wantedChannels = channels
-    [lap_signal, channels] = select_channels(lap_signal, wantedChannels, actualChannels=channels)
+    [signal, channels] = select_channels(signal, wantedChannels, actualChannels=channels)
 
 
     # ## ----------------------------------------------------------------------------- Processing Train
     # filters = [ [] for _ in range(max(len(bandPass), len(stopBand))) ]
     # for k,band in enumerate(bandPass):  filters[k].append(RealTimeButterFilter(order=filter_order, cutoff=band, fs=fs, type='bandpass'))
     # for k,band in enumerate(stopBand): filters[k].append(RealTimeButterFilter(order=filter_order, cutoff=band, fs=fs, type='bandstop'))
-    filt_signal = lap_signal
+    filt_signal = signal
     if len(bandPass)>0: filt_signal = get_bandranges(filt_signal, bandPass, fs, filter_order, 'bandpass')
     if len(stopBand)>0: filt_signal = get_bandranges(filt_signal, stopBand, fs, filter_order, 'bandstop')
 
@@ -54,10 +54,10 @@ def main(task='mi_bfbh', filter_order=2, windowsLength=1, classes=[771, 773]):
     pathLaplacian = 'c:/Users/aless/Desktop/gNautilus/lapMask16Nautilus.mat'
     laplacian = loadmat(pathLaplacian)
     laplacian = laplacian['lapMask']
-    lap_signal = signal @ laplacian
+    lap_signal = filt_signal @ laplacian
 
     # ## ----------------------------------------------------------------------------- Covariances
-    [covs, cov_events] = get_trNorm_covariance_matrix(filt_signal, events_dataFrame, windowsLength, windowsShift, fs)
+    [covs, cov_events] = get_trNorm_covariance_matrix(lap_signal, events_dataFrame, windowsLength, windowsShift, fs)
     labelVector = get_EventsVector_onFeedback(cov_events, covs.shape[1], classes)
     fdbVector = np.isin(labelVector, classes)
 
