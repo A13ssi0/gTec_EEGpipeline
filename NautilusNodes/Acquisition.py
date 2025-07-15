@@ -35,9 +35,9 @@ class Acquisition:
         self.info_socket.start()
         self.data_socket.start()
 
-        if self.device == 'test':       self._run_test_mode()
-        elif '.mat' in self.device:     self._run_mat_device()
-        else:                           self._run_real_device()
+        if self.device is None:         self._run_real_device()
+        elif self.device == 'test':       self._run_test_mode()
+        elif '.mat' in self.device:     self._run_mat_device()                        
 
         self.close()
 

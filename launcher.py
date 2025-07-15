@@ -10,13 +10,13 @@ genPath = 'c:/Users/aless/Desktop/gNautilus'  # Path to the model
 
 subjectCode = 'zzRecTest'  # Default subject code
 recFolder = f'{genPath}/data/recordings/'
-runType = 'test'  # Default run type
+runType =  "" # Default run type
 task = 'mi_bfbh'  # Default task
 
 laplacianPath = f'{genPath}/lapMask16Nautilus.mat'  # Path to the laplacian mask
 modelPath = f'{genPath}/'  # Path to the model
 
-device = None
+device = 'None'
 
 
 # ---------------------------------------------------------------------------------------------
@@ -36,9 +36,9 @@ classifier_port = filter_portOUT
 
 
 # ---------------------------------------------------------------------------------------------
-# subprocess.Popen([sys.executable, "launchers\launchAcquisition.py", eeg_port, info_port])  # esc 
-# subprocess.Popen([sys.executable, "launchers\launchFilter.py", filter_portIN, filter_portOUT, info_port])  # F1
-# subprocess.Popen([sys.executable, "launchers\launchVisualizer.py", visualizer_port, info_port, lenWindow]) # F2
+subprocess.Popen([sys.executable, "launchers\launchAcquisition.py", eeg_port, info_port, device])  # esc 
+subprocess.Popen([sys.executable, "launchers\launchFilter.py", filter_portIN, filter_portOUT, info_port])  # F1
+subprocess.Popen([sys.executable, "launchers\launchVisualizer.py", visualizer_port, info_port, lenWindow]) # F2
 # subprocess.Popen([sys.executable, "launchers\launchRecorder.py", rec_port, info_port, event_port, subjectCode, recFolder, runType, task]) # F3
 # subprocess.Popen([sys.executable, "launchers\launchClassifier.py", modelPath, classifier_port, info_port, laplacianPath]) # F5
 
