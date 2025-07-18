@@ -15,11 +15,11 @@ import keyboard
 from datetime import datetime
 
 
-def get_timestamp_bytes():
-    ts = datetime.now().strftime("%H:%M:%S.%f")
-    ts_bytes = ts.encode('utf-8')
-    return len(ts_bytes).to_bytes(4, 'big'), ts_bytes
 
+
+# ----------------------------
+# UDP Server
+# ----------------------------
 
 class UDPServer(threading.Thread):
     def __init__(self, host='127.0.0.1', port=5000, serverName='UDP', node=None):
@@ -52,6 +52,35 @@ class UDPServer(threading.Thread):
         self._stop.set()
         print(f"[{self.serverName}] Closed.")
 
+
+class UDPPortManagerServer(UDPServer):
+    def __init__(self, host='127.0.0.1', port=5000, serverName='UDP', node=None):
+        super().__init__(host, port, serverName, node)
+
+    def run(self):
+        print(f"[{self.serverName}] Listening on {self.host}:{self.port}")
+        while not self._stop.is_set():
+            try:
+                _, msg, addr = recv_udp(self.sock)
+                print(f"[{self.serverName}] Received message from {addr}: {msg}")
+                
+                if msg == 'PING':     send_udp(self.sock, addr, 'PONG')
+                elif msg.startswith('GET_PORT'):
+                    port_name = msg.split('/')[1]
+                    send_udp(self.sock, addr, self.node.get_port(port_name))
+                elif msg.startswith('ADD_PORT'):
+                    port_name = msg.split('/')[1]
+                    port_info = msg.split('/')[2]
+                    self.node.add_port(port_name, port_info)
+                else:   print(f"[{self.serverName}] Unknown message from {addr}: {msg}")
+
+            except Exception as e:
+                print(f"[{self.serverName}] Error: {e}")
+
+
+# ----------------------------
+# TCP Server
+# ----------------------------
 
 class TCPClientHandler(threading.Thread):
     def __init__(self, conn, addr, server):
@@ -156,6 +185,57 @@ class TCPServer(threading.Thread):
             for client in self.clients:
                 client.close()
         print(f"[{self.serverName}] Closed.")
+
+# Server For Filters
+class TCPFilterClientHandler(TCPClientHandler):
+
+    def __init__(self, conn, addr, server):
+        super().__init__(conn, addr, server)
+
+    def run(self):
+        try:
+            while not self.server._stop.is_set():
+                _, matrix = recv_tcp(self.conn)
+                # Handle filters sent from client
+                msg = matrix.decode('utf-8', errors='ignore') if isinstance(matrix, bytes) else ""
+                if msg.startswith('FILTERS'):               self.handle_filter_command(msg)
+                elif msg.startswith('APPEND_FILTERS'):      self.handle_filter_command(msg, append=True)
+        except Exception as e:
+            print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
+        finally:
+            try:    self.server.remove_client(self.conn)
+            except: pass
+            self.conn.close()
+
+    def handle_filter_command(self, msg, append=False):
+        parts = msg.split('/')
+        try:
+            if len(parts) == 1:
+                if self.server.node.filter :    print(f"[{self.server.serverName}] Filter reset")
+                self.server.node.filter = []
+                return
+            if len(parts) == 4 and parts[-1] == 'bstop':
+                hp = int(parts[1][2:])
+                lp = int(parts[2][2:])
+                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['SampleRate'], 'bandstop')
+            elif len(parts) == 3:
+                hp = int(parts[1][2:])
+                lp = int(parts[2][2:])
+                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['SampleRate'], 'bandpass')
+            elif parts[1].startswith('hp'):
+                hp = int(parts[1][2:])
+                filt = RealTimeButterFilter(2, hp, self.server.node.info['SampleRate'], 'highpass')
+            elif parts[1].startswith('lp'):
+                lp = int(parts[1][2:])
+                filt = RealTimeButterFilter(2, lp, self.server.node.info['SampleRate'], 'lowpass')
+            else:
+                return
+            if append:  self.server.node.filter.append([filt])
+            else:       self.server.node.filter = [filt]
+            print(f"[{self.server.serverName}] Filter set: {msg}")
+        except Exception as e:
+            print(f"[{self.server.serverName}] Filter parse error: {e}")
+
 
 
 # ----------------------------
@@ -266,72 +346,31 @@ def get_free_ports(ip='127.0.0.1', n=1, start=1024, end=65535, timeout=0.5):
     free_ports = []
     port = start
     while len(free_ports) < n and port <= end:
-        tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        tcp_sock.settimeout(timeout)
-        try:
-            tcp_sock.bind((ip, port))
-            udp_sock.bind((ip, port))
-            free_ports.append(port)
-        except OSError:
-            pass
-        finally:
-            tcp_sock.close()
-            udp_sock.close()
+        if check_free_port(ip, port, timeout): free_ports.append(port)
         port += 1
     if len(free_ports) < n:
         raise RuntimeError("Not enough free ports found.")
     return free_ports
 
-# ----------------------------
-# Server For Filters
-# ----------------------------
+def check_free_port(ip, port, timeout=0.5):
+    tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-class TCPFilterClientHandler(TCPClientHandler):
+    tcp_sock.settimeout(timeout)
+    udp_sock.settimeout(timeout)
 
-    def __init__(self, conn, addr, server):
-        super().__init__(conn, addr, server)
+    try:
+        tcp_sock.bind((ip, port))
+        udp_sock.bind((ip, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        tcp_sock.close()
+        udp_sock.close()
 
-    def run(self):
-        try:
-            while not self.server._stop.is_set():
-                _, matrix = recv_tcp(self.conn)
-                # Handle filters sent from client
-                msg = matrix.decode('utf-8', errors='ignore') if isinstance(matrix, bytes) else ""
-                if msg.startswith('FILTERS'):               self.handle_filter_command(msg)
-                elif msg.startswith('APPEND_FILTERS'):      self.handle_filter_command(msg, append=True)
-        except Exception as e:
-            print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
-        finally:
-            try:    self.server.remove_client(self.conn)
-            except: pass
-            self.conn.close()
 
-    def handle_filter_command(self, msg, append=False):
-        parts = msg.split('/')
-        try:
-            if len(parts) == 1:
-                if self.server.node.filter :    print(f"[{self.server.serverName}] Filter reset")
-                self.server.node.filter = []
-                return
-            if len(parts) == 4 and parts[-1] == 'bstop':
-                hp = int(parts[1][2:])
-                lp = int(parts[2][2:])
-                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['SampleRate'], 'bandstop')
-            elif len(parts) == 3:
-                hp = int(parts[1][2:])
-                lp = int(parts[2][2:])
-                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['SampleRate'], 'bandpass')
-            elif parts[1].startswith('hp'):
-                hp = int(parts[1][2:])
-                filt = RealTimeButterFilter(2, hp, self.server.node.info['SampleRate'], 'highpass')
-            elif parts[1].startswith('lp'):
-                lp = int(parts[1][2:])
-                filt = RealTimeButterFilter(2, lp, self.server.node.info['SampleRate'], 'lowpass')
-            else:
-                return
-            if append:  self.server.node.filter.append([filt])
-            else:       self.server.node.filter = [filt]
-            print(f"[{self.server.serverName}] Filter set: {msg}")
-        except Exception as e:
-            print(f"[{self.server.serverName}] Filter parse error: {e}")
+def get_timestamp_bytes():
+    ts = datetime.now().strftime("%H:%M:%S.%f")
+    ts_bytes = ts.encode('utf-8')
+    return len(ts_bytes).to_bytes(4, 'big'), ts_bytes

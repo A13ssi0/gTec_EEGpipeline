@@ -2,24 +2,21 @@ import numpy as np
 import pygds
 import time
 import keyboard
-import utils.server as server
+from utils.server import wait_for_udp_server, send_udp, recv_udp, wait_for_tcp_server, send_tcp, UDPServer, TCPServer
+import socket, ast
 from scipy.io import loadmat
-
-from datetime import datetime
-
-HOST = '127.0.0.1'
 
 
 class Acquisition:
-    def __init__(self, data_port=12345, info_port=54321, device=None, samplingRate=500, dataChunkSize=20):
+    def __init__(self, device=None, managerPort=25798, samplingRate=500, dataChunkSize=20, host='127.0.0.1'):
         self.name = 'Acquisition'
         self.stop = False
         self.nSamples = 0
-        # self.AAAAAAAA = open(f"zzzzAcquisition.txt", "w")
         self.device = device
         self.samplingRate = samplingRate
         self.dataChunkSize = dataChunkSize
         self.channels = ['FP1', 'FP2', 'F3', 'Fz', 'F4', 'T7', 'C3', 'Cz', 'C4', 'T8', 'P3', 'Pz', 'P4', 'PO7', 'PO8', 'Oz']
+        self.host = host
 
         self.info = {
             'device': device,
@@ -28,8 +25,22 @@ class Acquisition:
             'channels': self.channels
         }
 
-        self.info_socket = server.UDPServer(host=HOST, port=info_port, serverName='InfoDictionary', node=self)
-        self.data_socket = server.TCPServer(host=HOST, port=data_port, serverName=self.name, node=self)
+        neededPorts = ['InfoDictionary', 'EEGData']
+        self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
+
+
+    def init_sockets(self, managerPort, neededPorts):
+        portDict = {port: None for port in neededPorts}
+        wait_for_udp_server(self.host, managerPort)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
+            for port_name in portDict.keys():
+                send_udp(udp_sock, (self.host, managerPort), f"GET_PORT/{port_name}")
+                _, port_info, _ = recv_udp(udp_sock)
+                portDict[port_name] = int(port_info.decode('utf-8'))
+            
+        self.info_socket = UDPServer(host=self.host, port=portDict['InfoDictionary'], serverName='InfoDictionary', node=self)
+        self.data_socket = TCPServer(host=self.host, port=portDict['EEGData'], serverName=self.name, node=self)
+
 
     def run(self):
         self.info_socket.start()

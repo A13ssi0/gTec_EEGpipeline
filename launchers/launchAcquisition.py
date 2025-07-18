@@ -5,19 +5,18 @@ parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
+
+# This script is used to launch the acquisition process for Nautilus 
+
 from NautilusNodes.Acquisition import Acquisition
 
-data_port = int(sys.argv[1]) if len(sys.argv) > 1 else 12345
-info_port = int(sys.argv[2]) if len(sys.argv) > 2 else 54321
-if len(sys.argv) < 4:           device = 'test'  # Default device if not provided
-elif sys.argv[3] == 'None':     device = None
-elif len(sys.argv[3]) == 0:     device = None
+if len(sys.argv) < 2:                                   device = 'test'  # Default device if not provided
+elif sys.argv[1] == 'None' or len(sys.argv[1]) == 0:     device = None
+else:                                                   device = sys.argv[1]
+managerPort = int(sys.argv[2]) if len(sys.argv) > 2 else '25798'
 
 
+print(f"Starting acquisition with device={device} and managerPort={managerPort}")
 
-print(f"Starting acquisition with  device={device}")
-
-na = Acquisition(data_port=data_port, info_port=info_port, device=device, samplingRate=500, dataChunkSize=20)
-# na = Acquisition(data_port=data_port, info_port=info_port, samplingRate=500, dataChunkSize=20)
-
+na = Acquisition(device=device, managerPort=managerPort, samplingRate=500, dataChunkSize=20)
 na.run()
