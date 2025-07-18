@@ -2,7 +2,7 @@ import numpy as np
 import pygds
 import time
 import keyboard
-from utils.server import wait_for_udp_server, send_udp, recv_udp, wait_for_tcp_server, send_tcp, UDPServer, TCPServer
+from utils.server import wait_for_udp_server, send_udp, recv_udp, UDPServer, TCPServer
 import socket, ast
 from scipy.io import loadmat
 
@@ -36,15 +36,15 @@ class Acquisition:
             for port_name in portDict.keys():
                 send_udp(udp_sock, (self.host, managerPort), f"GET_PORT/{port_name}")
                 _, port_info, _ = recv_udp(udp_sock)
-                portDict[port_name] = int(port_info.decode('utf-8'))
+                portDict[port_name] = int(port_info)
             
-        self.info_socket = UDPServer(host=self.host, port=portDict['InfoDictionary'], serverName='InfoDictionary', node=self)
-        self.data_socket = TCPServer(host=self.host, port=portDict['EEGData'], serverName=self.name, node=self)
+        self.InfoDict_socket = UDPServer(host=self.host, port=portDict['InfoDictionary'], serverName='InfoDictionary', node=self)
+        self.EEG_socket = TCPServer(host=self.host, port=portDict['EEGData'], serverName=self.name, node=self)
 
 
     def run(self):
-        self.info_socket.start()
-        self.data_socket.start()
+        self.InfoDict_socket.start()
+        self.EEG_socket.start()
 
         if self.device is None:         self._run_real_device()
         elif self.device == 'test':       self._run_test_mode()
@@ -98,7 +98,7 @@ class Acquisition:
         self.nSamples += data.shape[0]
 
         try:
-            self.data_socket.broadcast(data)
+            self.EEG_socket.broadcast(data)
         except Exception as e:
             print(f"[{self.name}] Broadcast error: {e}")
             return False
@@ -107,8 +107,8 @@ class Acquisition:
 
     def close(self):
         # self.AAAAAAAA.close()
-        self.data_socket.close()
-        self.info_socket.close()
+        self.EEG_socket.close()
+        self.InfoDict_socket.close()
         if hasattr(self, 'nautilus') and self.nautilus:
             del self.nautilus
         print(f"[{self.name}] Finished streaming {self.nSamples} samples.")

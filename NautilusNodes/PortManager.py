@@ -1,11 +1,12 @@
-from utils.server import UDPPortManagerServer, UDPServer
+from utils.server import UDPPortManagerServer
+import keyboard
 
 HOST = '127.0.0.1'
 
 class PortManager:
     def __init__(self, host=HOST, managerPort=5000):
         self.dictPorts = {}
-        self.port_socket = UDPServer(host=host, port=managerPort, serverName='PortManager', node=self)
+        self.port_socket = UDPPortManagerServer(host=host, port=managerPort, serverName='PortManager', node=self)
 
 
     def set_dictPorts(self, ports_dict):
@@ -23,10 +24,14 @@ class PortManager:
         return self.dictPorts[port_name]
     
     def run(self):
-        print("[PortManager]: Starting port socket thread...")
         self.port_socket.start()
-        print("[PortManager]: Port Manager is running. Waiting for requests...")
+        while True:
+            if keyboard.is_pressed('esc'):
+                self.close()
+                break
+            
 
-    def __del__(self):
+    def close(self):
         self.port_socket.close()
-        print("[PortManager]: Port Manager stopped.")
+        print("[PortManager]: Port manager closed.")
+

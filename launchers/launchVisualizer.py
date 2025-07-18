@@ -7,9 +7,8 @@ if parent_dir not in sys.path:
 
 from NautilusNodes.Visualizer import Visualizer
 
-data_port = int(sys.argv[1]) 
-info_port = int(sys.argv[2]) 
-lenWindow = int(sys.argv[3]) if len(sys.argv) > 3 else 10
+managerPort = int(sys.argv[1]) 
+lenWindow = int(sys.argv[2]) if len(sys.argv) > 2 else 10
     
-nvis = Visualizer(data_port=data_port, info_port=info_port, lenWindow=lenWindow)
+nvis = Visualizer(managerPort=managerPort, lenWindow=lenWindow)
 nvis.run()  # Start the recorder, which will connect to the server and start receiving data 

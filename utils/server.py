@@ -62,7 +62,6 @@ class UDPPortManagerServer(UDPServer):
         while not self._stop.is_set():
             try:
                 _, msg, addr = recv_udp(self.sock)
-                print(f"[{self.serverName}] Received message from {addr}: {msg}")
                 
                 if msg == 'PING':     send_udp(self.sock, addr, 'PONG')
                 elif msg.startswith('GET_PORT'):
@@ -302,6 +301,7 @@ def recv_udp(sock, num_bytes=4096):
 
 
 def send_udp(sock, addr, message):
+    if isinstance(message, int):    message = str(message)
     if isinstance(message, str):    message = message.encode('utf-8')
     ts_len, ts_bytes = get_timestamp_bytes()
     msg_len = len(message).to_bytes(4, 'big')

@@ -7,24 +7,37 @@ from datetime import datetime, date
 HOST = '127.0.0.1'
 
 class Filter:
-    def __init__(self, data_port=12345, output_port=23456, info_port=54321):
+    def __init__(self, managerPort=25798):
         self.host = HOST
-        self.data_port = data_port
-        self.output_port = output_port
-        self.info_port = info_port
         self.name = 'Filter'
         self.filter = []
         self.stop = False
 
-        self.data_socket = TCPServer(host=self.host, port=self.output_port, serverName=self.name, node=self)
+        neededPorts = ['InfoDictionary', 'EEGData', 'FilteredData']
+        self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
+
+
+    def init_sockets(self, managerPort, neededPorts):
+        portDict = {port: None for port in neededPorts}
+        wait_for_udp_server(self.host, managerPort)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
+            for port_name in portDict.keys():
+                send_udp(udp_sock, (self.host, managerPort), f"GET_PORT/{port_name}")
+                _, port_info, _ = recv_udp(udp_sock)
+                portDict[port_name] = int(port_info)
+        
+        self.EEGPort = portDict['EEGData']
+        self.InfoDictPort = portDict['InfoDictionary']
+        self.Filtered_socket = TCPServer(host=self.host, port=portDict['FilteredData'], serverName=self.name, node=self)
+
 
     def run(self):
-        self.data_socket.start()
+        self.Filtered_socket.start()
 
         # Wait and retrieve info from UDP server
-        wait_for_udp_server(self.host, self.info_port)
+        wait_for_udp_server(self.host, self.InfoDictPort)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            send_udp(udp_sock, (self.host,self.info_port), "GET_INFO")  # Request info from the server
+            send_udp(udp_sock, (self.host,self.InfoDictPort), "GET_INFO")  # Request info from the server
             ts, raw_info, addr = recv_udp(udp_sock)
             try:
                 self.info = ast.literal_eval(raw_info)  # safely parse string dict
@@ -34,11 +47,11 @@ class Filter:
 
         print(f"[{self.name}] Received info dictionary")
         # Wait for TCP data source
-        wait_for_tcp_server(self.host, self.data_port)
+        wait_for_tcp_server(self.host, self.EEGPort)
 
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_sock:
-                tcp_sock.connect((self.host, self.data_port))
+                tcp_sock.connect((self.host, self.EEGPort))
                 send_tcp(b'', tcp_sock)
                 print(f"[{self.name}] Connected to data source. Starting filter loop...")
 
@@ -55,7 +68,7 @@ class Filter:
                         if self.filter: 
                             for filt in self.filter: matrix = filt.filter(matrix)
                        
-                        self.data_socket.broadcast(matrix)
+                        self.Filtered_socket.broadcast(matrix)
 
                         if keyboard.is_pressed('F1'):
                             self.stop = True
@@ -68,5 +81,5 @@ class Filter:
 
     def close(self):
         self.stop = True
-        self.data_socket.close()
+        self.Filtered_socket.close()
         print(f"[{self.name}] Finished.")

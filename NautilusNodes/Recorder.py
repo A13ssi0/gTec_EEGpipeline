@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 HOST = '127.0.0.1'
 
 class Recorder:
-    def __init__(self, data_port=12345, info_port=54321, event_port=44551, subjectCode='noName', recFolder='', runType= '', task=''):
+    def __init__(self, managerPort=25798, subjectCode='noName', recFolder='', runType= '', task=''):
         self.filePath = f'{recFolder}{subjectCode}'
         if not os.path.exists(self.filePath):   os.makedirs(self.filePath)
 
@@ -24,19 +24,33 @@ class Recorder:
         self.file = open(f"{self.filePath}.txt", "w")
         self.fileTimestamp = open(f"{self.filePath}_timestamp.txt", "w")
         self.fileEvents = open(f"{self.filePath}_events.txt", "w")
-        self.data_port = data_port
-        self.info_port = info_port
-        self.event_port = event_port
         self.host = HOST
         self.name = 'Recorder'
 
-        self.event_socket = UDPServer(host=HOST, port=event_port, serverName='EventBus', node=self)
+        neededPorts = ['InfoDictionary', 'EEGData', 'EventBus']
+        self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
+
+
+    def init_sockets(self, managerPort, neededPorts):
+        portDict = {port: None for port in neededPorts}
+        wait_for_udp_server(self.host, managerPort)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
+            for port_name in portDict.keys():
+                send_udp(udp_sock, (self.host, managerPort), f"GET_PORT/{port_name}")
+                _, port_info, _ = recv_udp(udp_sock)
+                portDict[port_name] = int(port_info)
+            
+        self.InfoDictPort = portDict['InfoDictionary']
+        self.EEGPort = portDict['EEGData']
+        self.event_socket = UDPServer(host=HOST, port=portDict['EventBus'], serverName='EventBus', node=self)
+
+
 
     def run(self):
         self.event_socket.start()
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        wait_for_udp_server(self.host, self.info_port)
-        send_udp(sock, (self.host,self.info_port), "GET_INFO")  # Request info from the server
+        wait_for_udp_server(self.host, self.InfoDictPort)
+        send_udp(sock, (self.host,self.InfoDictPort), "GET_INFO")  # Request info from the server
         _, info_str, _ = recv_udp(sock)
         try:
             self.info = ast.literal_eval(info_str)
@@ -46,7 +60,7 @@ class Recorder:
         print(f"[{self.name}] Received info dictionary")
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect((self.host, self.data_port))
+            sock.connect((self.host, self.EEGPort))
             send_tcp(b'', sock)
             print(f"[{self.name}] Connected. Waiting for data...")
             print(f"[{self.name}] Starting the recording")

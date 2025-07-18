@@ -16,21 +16,36 @@ import keyboard
 HOST = '127.0.0.1'
 
 class Classifier:
-    def __init__(self, modelPath, filter_port=12345, info_port=54321, laplacianPath=None):
+    def __init__(self, modelPath, managerPort=25798, laplacianPath=None):
         self.name = 'Classifier'
         self.host = HOST
-        self.filter_port = filter_port
-        self.info_port = info_port
         self.classifier_dict = load(modelPath)
         self.buffer = Buffer((self.classifier_dict['windowsLength'], len(self.classifier_dict['channels'])))
         self.laplacian = loadmat(laplacianPath)['lapMask'] if laplacianPath else None
         self.classifier = self.classifier_dict['fgmdm']
+        neededPorts = ['FilteredData', 'InfoDictionary']
+        self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
+
+
+    def init_sockets(self, managerPort, neededPorts):
+        portDict = {port: None for port in neededPorts}
+        wait_for_udp_server(self.host, managerPort)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
+            for port_name in portDict.keys():
+                send_udp(udp_sock, (self.host, managerPort), f"GET_PORT/{port_name}")
+                _, port_info, _ = recv_udp(udp_sock)
+                portDict[port_name] = int(port_info)
+
+        self.FilteredPort = portDict['FilteredData']
+        self.InfoDictPort = portDict['InfoDictionary']
+            
+            
 
     def run(self):
         # Wait and retrieve info from UDP server
-        wait_for_udp_server(self.host, self.info_port)
+        wait_for_udp_server(self.host, self.InfoDictPort)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            send_udp(udp_sock, (self.host,self.info_port), "GET_INFO")  # Request info from the server
+            send_udp(udp_sock, (self.host,self.InfoDictPort), "GET_INFO")  # Request info from the server
             _, raw_info, _ = recv_udp(udp_sock)
             try:
                 self.info = ast.literal_eval(raw_info)  # safely parse string dict
@@ -46,11 +61,11 @@ class Classifier:
         
         channelMask = get_channelsMask(self.classifier_dict['channels'], self.info['channels'])
 
-        wait_for_tcp_server(self.host, self.filter_port)
+        wait_for_tcp_server(self.host, self.FilteredPort)
 
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_sock:
-                tcp_sock.connect((self.host, self.filter_port))
+                tcp_sock.connect((self.host, self.FilteredPort))
                 send_tcp(b'FILTERS', tcp_sock)
 
                 message = 'FILTERS'

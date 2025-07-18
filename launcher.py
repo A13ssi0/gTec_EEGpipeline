@@ -17,7 +17,7 @@ task = 'mi_bfbh'  # Default task
 laplacianPath = f'{genPath}/lapMask16Nautilus.mat'  # Path to the laplacian mask
 modelPath = f'{genPath}/'  # Path to the model
 
-device = 'None'
+device = 'test'
 
 if not check_free_port(host, 25798): raise RuntimeError(f"Port {25798} is not free. Please choose another port.")     # Check if the first port is free
 portManagerPort = str(25798)  # Port for the Port Manager
@@ -42,10 +42,10 @@ portDict['EventBus'] = free_ports[3]  # event port for the sensor
 
 
 # ---------------------------------------------------------------------------------------------
-subprocess.Popen([sys.executable, "launchers\launchPortManager.py", portManagerPort, json.dumps(portDict)]) 
-# subprocess.Popen([sys.executable, "launchers\launchAcquisition.py", device, portManagerPort])  # esc 
-# subprocess.Popen([sys.executable, "launchers\launchFilter.py", filter_portIN, filter_portOUT, info_port])  # F1
-# subprocess.Popen([sys.executable, "launchers\launchVisualizer.py", visualizer_port, info_port, lenWindow]) # F2
-# subprocess.Popen([sys.executable, "launchers\launchRecorder.py", rec_port, info_port, event_port, subjectCode, recFolder, runType, task]) # F3
-# subprocess.Popen([sys.executable, "launchers\launchClassifier.py", modelPath, classifier_port, info_port, laplacianPath]) # F5
+subprocess.Popen([sys.executable, "launchers\launchPortManager.py", portManagerPort, json.dumps(portDict)]) # esc
+subprocess.Popen([sys.executable, "launchers\launchAcquisition.py", device, portManagerPort])  # esc 
+subprocess.Popen([sys.executable, "launchers\launchFilter.py", portManagerPort])  # F1
+subprocess.Popen([sys.executable, "launchers\launchVisualizer.py", portManagerPort, lenWindow]) # F2
+subprocess.Popen([sys.executable, "launchers\launchRecorder.py", portManagerPort, subjectCode, recFolder, runType, task]) # F3
+# subprocess.Popen([sys.executable, "launchers\launchClassifier.py", modelPath, portManagerPort, laplacianPath]) # F5
 

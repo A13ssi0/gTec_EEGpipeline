@@ -8,22 +8,37 @@ from datetime import datetime, date
 HOST = '127.0.0.1'
 
 class Visualizer:
-    def __init__(self, data_port=12345, info_port=54321, lenWindow=10):
+    def __init__(self, managerPort=25798, lenWindow=10): 
         self.name = 'Visualizer'
         self.lenWindow = lenWindow
-        # self.counter = 0
         self.host = HOST
-        self.data_port = data_port
-        self.info_port = info_port
         self.last_plot_time = 0
         self.applyCAR = False
+        neededPorts = ['FilteredData', 'InfoDictionary']
+        self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
+
+
+    def init_sockets(self, managerPort, neededPorts):
+        portDict = {port: None for port in neededPorts}
+        wait_for_udp_server(self.host, managerPort)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
+            for port_name in portDict.keys():
+                send_udp(udp_sock, (self.host, managerPort), f"GET_PORT/{port_name}")
+                _, port_info, _ = recv_udp(udp_sock)
+                portDict[port_name] = int(port_info)
+
+        self.FilteredPort = portDict['FilteredData']
+        self.InfoDictPort = portDict['InfoDictionary']
+            
+
+
 
     def run(self):
-        wait_for_udp_server(self.host, self.info_port)
-        wait_for_tcp_server(self.host, self.data_port)
+        wait_for_udp_server(self.host, self.InfoDictPort)
+        wait_for_tcp_server(self.host, self.FilteredPort)
 
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            send_udp(sock, (self.host,self.info_port), "GET_INFO")  # Request info from the server
+            send_udp(sock, (self.host,self.InfoDictPort), "GET_INFO")  # Request info from the server
             ts, info_str, addr = recv_udp(sock)
             try:
                 self.info = ast.literal_eval(info_str)
@@ -34,7 +49,7 @@ class Visualizer:
             
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.socket:
-            self.socket.connect((self.host, self.data_port))
+            self.socket.connect((self.host, self.FilteredPort))
             send_tcp(b'FILTERS', self.socket)
             print(f"[{self.name}] Connected. Waiting for data...")
             self.setup()
