@@ -3,7 +3,7 @@ import numpy as np
 from scipy.io import savemat
 import os
 import keyboard
-from utils.server import recv_tcp, recv_udp, wait_for_udp_server, send_udp, send_tcp, UDPServer
+from utils.server import recv_tcp, recv_udp, wait_for_udp_server, send_udp, send_tcp, TCPServer
 import ast  # For safely converting string dicts
 from datetime import datetime, timedelta    
 
@@ -42,7 +42,7 @@ class Recorder:
             
         self.InfoDictPort = portDict['InfoDictionary']
         self.EEGPort = portDict['EEGData']
-        self.event_socket = UDPServer(host=HOST, port=portDict['EventBus'], serverName='EventBus', node=self)
+        self.event_socket = TCPServer(host=HOST, port=portDict['EventBus'], serverName='EventBus', node=self)
 
 
 

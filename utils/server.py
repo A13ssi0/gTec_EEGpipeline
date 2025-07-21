@@ -34,15 +34,12 @@ class UDPServer(threading.Thread):
         self._stop = threading.Event()
 
     def run(self):
-        print(f"[{self.serverName}] Listening on {self.host}:{self.port}")
         while not self._stop.is_set():
             try:
-                ts, msg, addr = recv_udp(self.sock)
-                # msg = data.decode('utf-8', errors='ignore').strip()
+                _, msg, addr = recv_udp(self.sock)
 
                 if msg == 'GET_INFO' and self.node: send_udp(self.sock, addr, str(self.node.info))
                 elif msg == 'PING':     send_udp(self.sock, addr, 'PONG')
-                elif msg.startswith('ev'): self.node.save_event(ts, msg[2:])  # Save event with timestamp
                 else:   print(f"[{self.serverName}] Unknown message from {addr}: {msg}")
 
             except Exception as e:
@@ -58,7 +55,6 @@ class UDPPortManagerServer(UDPServer):
         super().__init__(host, port, serverName, node)
 
     def run(self):
-        print(f"[{self.serverName}] Listening on {self.host}:{self.port}")
         while not self._stop.is_set():
             try:
                 _, msg, addr = recv_udp(self.sock)
@@ -91,9 +87,10 @@ class TCPClientHandler(threading.Thread):
     def run(self):
         try:
             while not self.server._stop.is_set():
-                timestamp, matrix = recv_tcp(self.conn)
-                # Handle filters sent from client
+                ts, matrix = recv_tcp(self.conn)
                 msg = matrix.decode('utf-8', errors='ignore') if isinstance(matrix, bytes) else ""
+                if msg.startswith('ev'): self.node.save_event(ts, msg[2:])  # Save event with timestamp
+
         except Exception as e:
             print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
         finally:
@@ -120,8 +117,6 @@ class TCPServer(threading.Thread):
 
     def choose_handler(self, conn, addr):
         try:
-            # You can add a timeout if needed
-
             conn.settimeout(10)
             _, msg = recv_tcp(conn)
             conn.settimeout(None)
