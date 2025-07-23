@@ -114,7 +114,6 @@ class TCPServer(threading.Thread):
         self.clients_lock = threading.Lock()
         self._stop = threading.Event()
 
-
     def choose_handler(self, conn, addr):
         try:
             conn.settimeout(10)
@@ -159,7 +158,7 @@ class TCPServer(threading.Thread):
 
     def broadcast(self, data):
         try:
-            full_payload = send_tcp(data, sock=None)  # For testing purposes, return the full message without sending
+            full_payload = send_tcp(data, sock=None) 
         except Exception as e:
             print(f"[{self.serverName}] Data preparation error: {e}")
             return
@@ -259,7 +258,7 @@ def recv_tcp(sock):
             matrix = np.load(io.BytesIO(payload))
             return timestamp, matrix
         except Exception:
-            return timestamp, payload
+            return timestamp, None
 
     except Exception as e:
         raise ConnectionError(f"TCP receive failed: {e}")
@@ -320,20 +319,20 @@ def wait_for_udp_server(host='127.0.0.1', port=5000, timeout=10):
     raise TimeoutError("UDP server did not respond in time.")
 
 
-def wait_for_tcp_server(host='127.0.0.1', port=5000, timeout=10):
+def wait_for_tcp_server(host, port, timeout=10):
     deadline = time.time() + timeout
     while time.time() < deadline:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
         try:
             sock.connect((host, port))
-            send_tcp(b'PING', sock)  # Send a test message
-            sock.close()
-            return True
+            # send_tcp(b'PING', sock)  # Send a test message
+            # sock.close()
+            return sock
         except (ConnectionRefusedError, socket.timeout):
             time.sleep(0.1)
-        finally:
-            sock.close()
+        # finally:
+        #     sock.close()
     raise TimeoutError(f"TCP server at {host}:{port} did not respond in time.")
 
 

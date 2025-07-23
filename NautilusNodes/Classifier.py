@@ -61,11 +61,9 @@ class Classifier:
         
         channelMask = get_channelsMask(self.classifier_dict['channels'], self.info['channels'])
 
-        wait_for_tcp_server(self.host, self.FilteredPort)
-
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_sock:
-                tcp_sock.connect((self.host, self.FilteredPort))
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM):
+                tcp_sock = wait_for_tcp_server(self.host, self.FilteredPort)
                 send_tcp(b'FILTERS', tcp_sock)
 
                 message = 'FILTERS'

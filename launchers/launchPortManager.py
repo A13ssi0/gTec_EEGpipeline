@@ -10,7 +10,7 @@ if parent_dir not in sys.path:
 from NautilusNodes.PortManager import PortManager
 import json
 
-managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 12345
+managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
 portDict = json.loads(sys.argv[2]) if len(sys.argv) > 2 else None
 
 

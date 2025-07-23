@@ -35,7 +35,6 @@ class Visualizer:
 
     def run(self):
         wait_for_udp_server(self.host, self.InfoDictPort)
-        wait_for_tcp_server(self.host, self.FilteredPort)
 
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             send_udp(sock, (self.host,self.InfoDictPort), "GET_INFO")  # Request info from the server
@@ -48,13 +47,14 @@ class Visualizer:
             print(f"[{self.name}] Received info dictionary")
             
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.socket:
-            self.socket.connect((self.host, self.FilteredPort))
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM):
+            self.socket = wait_for_tcp_server(self.host, self.FilteredPort)
             send_tcp(b'FILTERS', self.socket)
             print(f"[{self.name}] Connected. Waiting for data...")
             self.setup()
             print(f"[{self.name}] Starting the visualization")
             self.app.exec()
+
 
     def on_number_entered(self):
         if self.filter_checkbox.isChecked():

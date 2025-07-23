@@ -3,7 +3,7 @@ import numpy as np
 from scipy.io import savemat
 import os
 import keyboard
-from utils.server import recv_tcp, recv_udp, wait_for_udp_server, send_udp, send_tcp, TCPServer
+from utils.server import recv_tcp, recv_udp, wait_for_udp_server, send_udp, send_tcp, TCPServer, wait_for_tcp_server
 import ast  # For safely converting string dicts
 from datetime import datetime, timedelta    
 
@@ -59,8 +59,8 @@ class Recorder:
             return
         print(f"[{self.name}] Received info dictionary")
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect((self.host, self.EEGPort))
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM):
+            sock = wait_for_tcp_server(self.host, self.EEGPort)
             send_tcp(b'', sock)
             print(f"[{self.name}] Connected. Waiting for data...")
             print(f"[{self.name}] Starting the recording")

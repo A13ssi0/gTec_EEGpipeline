@@ -27,13 +27,17 @@ class PortManager:
     def run(self):
         self.port_socket.start()
         while not self.port_socket._stop.is_set():
-            if keyboard.is_pressed('esc'):
-                self.close()
-                break
+            if keyboard.is_pressed('F12'):
+                self.port_socket._stop.set()
             time.sleep(0.1)
+        self.close()
             
 
     def close(self):
         self.port_socket.close()
+        del self.dictPorts
         print("[PortManager]: Port manager closed.")
+
+    def __del__(self):
+        if hasattr(self, 'dictPorts') :      self.close()
 

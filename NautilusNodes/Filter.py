@@ -47,17 +47,21 @@ class Filter:
 
         print(f"[{self.name}] Received info dictionary")
         # Wait for TCP data source
-        wait_for_tcp_server(self.host, self.EEGPort)
 
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_sock:
-                tcp_sock.connect((self.host, self.EEGPort))
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM):
+                tcp_sock = wait_for_tcp_server(self.host, self.EEGPort)
                 send_tcp(b'', tcp_sock)
                 print(f"[{self.name}] Connected to data source. Starting filter loop...")
 
                 while not self.stop:
                     try:
                         ts, matrix = recv_tcp(tcp_sock)
+                        
+                        if matrix is None:  # If no data received, break the loop
+                            print(f"[{self.name}] No data received. Exiting filter loop.")
+                            break
+                    
                         # a = datetime.now().time()
                         # ts = datetime.strptime(ts, "%H:%M:%S.%f").time()
                         # dt_a = datetime.combine(date.today(), a)
