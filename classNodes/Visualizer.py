@@ -14,6 +14,7 @@ class Visualizer:
         self.host = HOST
         self.last_plot_time = 0
         self.applyCAR = False
+        self.scale = 1000
         neededPorts = ['FilteredData', 'InfoDictionary']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
 
@@ -66,6 +67,9 @@ class Visualizer:
             send_tcp(message.encode('utf-8'), self.socket)
         else:
             send_tcp('FILTERS', self.socket)
+
+    def on_scale_entered(self):
+        self.scale = int(self.input_scale.text())
         
 
     def on_filter_toggled(self):
@@ -77,10 +81,9 @@ class Visualizer:
         print(f"[{self.name}] {status}")
 
     def setup(self):
-        nChannels = len(self.info['channels'])
+        self.nChannels = len(self.info['channels'])
         bufferSize = self.info['SampleRate'] * self.lenWindow
-        self.buffer = BufferVisualizer((bufferSize, nChannels))
-        self.offset = np.arange(nChannels) * 1000
+        self.buffer = BufferVisualizer((bufferSize, self.nChannels))
         self.setupWindow()
 
     def setupWindow(self):
@@ -96,13 +99,17 @@ class Visualizer:
         self.filter_checkbox.stateChanged.connect(self.on_filter_toggled)
         input_row.addWidget(self.filter_checkbox)
 
-        self.left_input = self._create_input("CutOff HighPass:", input_row)
-        self.right_input = self._create_input("CutOff LowPass:", input_row)
+        self.left_input = self._create_input("CutOff HighPass:", input_row, self.on_number_entered, placeholder="/")
+        self.right_input = self._create_input("CutOff LowPass:", input_row, self.on_number_entered, placeholder="/")
 
         self.car_checkbox = pg.QtWidgets.QCheckBox("CAR")
         self.car_checkbox.setChecked(False)
         self.car_checkbox.stateChanged.connect(self.on_car_toggled)
         input_row.addWidget(self.car_checkbox)
+
+        self.input_scale = self._create_input("Scale:", input_row, self.on_scale_entered,placeholder="1000")
+        input_row.addWidget(self.input_scale)
+
         input_row.addStretch()
 
         layout.addLayout(input_row)
@@ -116,10 +123,11 @@ class Visualizer:
         self.plot = self.win.addPlot()
         self.plot.invertY(True)
         self.plot.setXRange(0, self.buffer.data.shape[0], padding=0)
-        self.plot.enableAutoRange(x=False, y=True)
+        self.plot.setYRange(-0.5, self.nChannels-0.5, padding=0)
+        self.plot.enableAutoRange(x=False, y=False)
 
         y_axis = self.plot.getAxis('left')
-        custom_ticks = list(zip(self.offset[::-1], self.info['channels'][::-1]))
+        custom_ticks = list(zip(np.arange(self.nChannels)[::-1], self.info['channels'][::-1]))
         y_axis.setTicks([custom_ticks])
         y_axis.setStyle(tickLength=0)
 
@@ -142,12 +150,12 @@ class Visualizer:
 
         self.main_widget.keyPressEvent = self.keyPressEvent
 
-    def _create_input(self, label_text, layout):
+    def _create_input(self, label_text, layout, function, placeholder="/"):
         label = pg.QtWidgets.QLabel(label_text)
         input_field = pg.QtWidgets.QLineEdit()
         input_field.setFixedWidth(60)
-        input_field.setPlaceholderText("/")
-        input_field.returnPressed.connect(self.on_number_entered)
+        input_field.setPlaceholderText(placeholder)
+        input_field.returnPressed.connect(function)
         layout.addWidget(label)
         layout.addWidget(input_field)
         return input_field
@@ -166,7 +174,7 @@ class Visualizer:
         #     self.last_plot_time = time.time()
         data = self.buffer.data
         for i, curve in enumerate(self.curves):
-            curve.setData(data[:, i] + self.offset[i])
+            curve.setData(data[:, i]/self.scale + i)
 
     def handle_data(self):
         try:

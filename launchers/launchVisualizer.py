@@ -7,7 +7,7 @@ if parent_dir not in sys.path:
 
 from classNodes.Visualizer import Visualizer
 
-managerPort = int(sys.argv[1]) 
+managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
 lenWindow = int(sys.argv[2]) if len(sys.argv) > 2 else 10
     
 nvis = Visualizer(managerPort=managerPort, lenWindow=lenWindow)

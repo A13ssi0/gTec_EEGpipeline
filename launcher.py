@@ -36,9 +36,9 @@ portDict['EventBus'] = free_ports[3]
 
 # ---------------------------------------------------------------------------------------------
 
-# subprocess.Popen([sys.executable, "launchers\launchPortManager.py", portManagerPort, json.dumps(portDict)]) # F12
-# subprocess.Popen([sys.executable, "launchers\launchAcquisition.py", device, portManagerPort])  # esc 
-# subprocess.Popen([sys.executable, "launchers\launchFilter.py", portManagerPort])  # F1
+subprocess.Popen([sys.executable, "launchers\launchPortManager.py", portManagerPort, json.dumps(portDict)]) # F12
+subprocess.Popen([sys.executable, "launchers\launchAcquisition.py", device, portManagerPort])  # esc 
+subprocess.Popen([sys.executable, "launchers\launchFilter.py", portManagerPort])  # F1
 # subprocess.Popen([sys.executable, "launchers\launchVisualizer.py", portManagerPort, lenWindowVisualizer]) # F2
 # subprocess.Popen([sys.executable, "launchers\launchRecorder.py", portManagerPort, subjectCode, recFolder, runType, task]) # F3
 # subprocess.Popen([sys.executable, "launchers\launchClassifier.py", modelPath, portManagerPort, laplacianPath]) # F5
