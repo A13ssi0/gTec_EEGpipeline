@@ -7,7 +7,7 @@ if parent_dir not in sys.path:
 
 # This script is used to launch the acquisition process for Nautilus 
 
-from NautilusNodes.Acquisition import Acquisition
+from classNodes.Acquisition import Acquisition
 
 if len(sys.argv) < 2:                                   device = 'test'  # Default device if not provided
 elif sys.argv[1] == 'None' or len(sys.argv[1]) == 0:     device = None

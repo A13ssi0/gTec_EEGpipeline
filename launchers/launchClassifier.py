@@ -9,7 +9,7 @@ if parent_dir not in sys.path:
 
 # This script launches the Classifier node in the Nautilus framework.
 
-from NautilusNodes.Classifier import Classifier
+from classNodes.Classifier import Classifier
 
 modelPath = int(sys.argv[1]) 
 managerPort = int(sys.argv[2]) 

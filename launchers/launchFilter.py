@@ -8,7 +8,7 @@ if parent_dir not in sys.path:
 
 # This script is used to launch the Filter node in the Nautilus framework.
 
-from NautilusNodes.Filter import Filter
+from classNodes.Filter import Filter
 
 managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
 

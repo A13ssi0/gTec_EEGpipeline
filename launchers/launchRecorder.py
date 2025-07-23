@@ -9,7 +9,7 @@ if parent_dir not in sys.path:
 # This script is used to launch the recorder process for Nautilus
 
 
-from NautilusNodes.Recorder import Recorder
+from classNodes.Recorder import Recorder
 
 managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else '25798'
 subjectCode = sys.argv[2] if len(sys.argv) > 2 else "zzRecTest"  # Default file name if not provided

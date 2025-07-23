@@ -5,7 +5,7 @@ parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from NautilusNodes.Visualizer import Visualizer
+from classNodes.Visualizer import Visualizer
 
 managerPort = int(sys.argv[1]) 
 lenWindow = int(sys.argv[2]) if len(sys.argv) > 2 else 10
