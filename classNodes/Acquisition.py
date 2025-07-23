@@ -6,12 +6,12 @@ from utils.server import wait_for_udp_server, send_udp, recv_udp, UDPServer, TCP
 import socket, ast
 from scipy.io import loadmat
 import UnicornPy
+from py_utils.data_managment import fix_mat
 
 
 class Acquisition:
     def __init__(self, device=None, managerPort=25798, host='127.0.0.1'):
         self.name = 'Acquisition'
-        self.stop = False
         self.nSamples = 0
         self.device = device
         self.host = host
@@ -19,6 +19,8 @@ class Acquisition:
 
         neededPorts = ['InfoDictionary', 'EEGData']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
+
+        keyboard.add_hotkey('w', self.close)
 
 
     def init_sockets(self, managerPort, neededPorts):
@@ -39,9 +41,8 @@ class Acquisition:
         elif self.device.upper().startswith('UN'):  self._run_unicorn()
         elif self.device.upper().startswith('NA'):  self._run_nautilus()
         elif self.device == 'test':                 self._run_test_mode()
-        elif '.mat' in self.device:                 self._run_mat_device()                        
+        elif self.device.endswith('.mat'):          self._run_mat_device()                        
 
-        self.close()
 
     def _run_test_mode(self):
         self.SetNautilusSettings()
@@ -53,30 +54,31 @@ class Acquisition:
         self.InfoDict_socket.start()
         self.EEG_socket.start()
 
-        while not self.stop:
+        while not self.EEG_socket._stop.is_set():
             data = np.random.randn(self.info['dataChunkSize'], n_channels).astype(np.float32)*1000
             self.data_callback(data)
             time.sleep(sleep_time)
 
 
     def _run_mat_device(self):
-        # dt = self.dataChunkSize / self.samplingRate
-        # sleep_time = max(0, dt - 0.001)
-        # mat = loadmat(self.device)
-        # data = mat['data']
-        # print(f"[{self.name}] Running acquisition with MAT file: {self.device}")
-        # self.InfoDict_socket.start()
-        # self.EEG_socket.start()
+        mat = loadmat(self.device)
+        signal = mat['s']
+        self.info = fix_mat(mat['h'])
 
-        # pointer = 0
-        # while not self.stop:
-        #     self.data_callback(data[pointer:pointer + self.dataChunkSize, :])
-        #     pointer += self.dataChunkSize
-        #     if pointer + self.dataChunkSize >= data.shape[0]:   
-        #         print(f"[{self.name}] Reached end of data, restarting from beginning.")
-        #         pointer = 0
-        #     time.sleep(sleep_time)
-        print(f"[{self.name}] Running acquisition with MAT file: {self.device}. TO BE IMPLEMENTED")
+        dt = self.info['dataChunkSize'] / self.info['SampleRate']
+        sleep_time = max(0, dt - 0.001)
+        print(f"[{self.name}] Running acquisition with MAT file: {self.device}")
+        self.InfoDict_socket.start()
+        self.EEG_socket.start()
+
+        pointer = 0
+        while not self.EEG_socket._stop.is_set():
+            self.data_callback(signal[pointer:pointer + self.info['dataChunkSize'], :])
+            pointer += self.info['dataChunkSize']
+            if pointer + self.info['dataChunkSize'] >= signal.shape[0]:   
+                print(f"[{self.name}] Reached end of data, restarting from beginning.")
+                pointer = 0
+            time.sleep(sleep_time)
 
             
 
@@ -99,7 +101,7 @@ class Acquisition:
         self.InfoDict_socket.start()
         self.EEG_socket.start()
         try:
-            while not self.stop:
+            while not self.EEG_socket._stop.is_set():
                 self.unicorn.GetData(self.info['dataChunkSize'],receiveBuffer,receiveBufferBufferLength)
 
                 data = np.frombuffer(receiveBuffer, dtype=np.float32, count=numberOfAcquiredChannels * self.info['dataChunkSize'])
@@ -108,7 +110,7 @@ class Acquisition:
                 self.data_callback(data)
         except:
             pass
-        self.close()                             
+                                    
 
     def _run_nautilus(self):
         self.SetNautilusSettings()
@@ -117,13 +119,13 @@ class Acquisition:
         self.nautilus = pygds.GDS(gds_device=self.device)
         if self.device is None: self.device = self.nautilus.Name
         self.info['device'] = [self.device]
-        self.nautilus.SamplingRate = self.samplingRate
+        self.nautilus.SamplingRate = self.info['SampleRate']
         self.nautilus.SetConfiguration()
 
         print(f"[{self.name}] Starting real acquisition with gNautilus...")
         self.InfoDict_socket.start()
         self.EEG_socket.start()
-        self.nautilus.GetData(self.dataChunkSize, more=self.data_callback)
+        self.nautilus.GetData(self.info['dataChunkSize'], more=self.data_callback)
 
 
     def SetNautilusSettings(self):
@@ -147,10 +149,9 @@ class Acquisition:
             self.EEG_socket.broadcast(data)
         except Exception as e:
             print(f"[{self.name}] Broadcast error: {e}")
-            self.stop = True
+            self.EEG_socket._stop.set()
             return False
-        if keyboard.is_pressed('esc'): self.stop = True
-        return not self.stop
+        return True
 
     def close(self):
         # self.AAAAAAAA.close()

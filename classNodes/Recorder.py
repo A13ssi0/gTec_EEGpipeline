@@ -30,6 +30,9 @@ class Recorder:
         neededPorts = ['InfoDictionary', 'EEGData', 'EventBus']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
 
+        keyboard.add_hotkey('t', self.close)
+
+
 
     def init_sockets(self, managerPort, neededPorts):
         portDict = {port: None for port in neededPorts}
@@ -48,42 +51,43 @@ class Recorder:
 
     def run(self):
         self.event_socket.start()
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         wait_for_udp_server(self.host, self.InfoDictPort)
-        send_udp(sock, (self.host,self.InfoDictPort), "GET_INFO")  # Request info from the server
-        _, info_str, _ = recv_udp(sock)
-        try:
-            self.info = ast.literal_eval(info_str)
-        except Exception as e:
-            print(f"[{self.name}] Failed to parse info: {e}")
-            return
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
+            send_udp(udp_sock, (self.host,self.InfoDictPort), "GET_INFO")  # Request info from the server
+            _, raw_info, _ = recv_udp(udp_sock)
+            try:
+                self.info = ast.literal_eval(raw_info)  # safely parse string dict
+            except Exception as e:
+                print(f"[{self.name}] Failed to parse info: {e}")
+                self.info = {}
+
         print(f"[{self.name}] Received info dictionary")
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM):
-            sock = wait_for_tcp_server(self.host, self.EEGPort)
-            send_tcp(b'', sock)
-            print(f"[{self.name}] Connected. Waiting for data...")
-            print(f"[{self.name}] Starting the recording")
-            while True:
-                try:
-                    ts, data = recv_tcp(sock)
-                    
-                    # matrix_bytes = pickle.loads(data)
-                    for row in data:    self.file.write(' '.join(map(str, row)) + '\n')
+        sock = wait_for_tcp_server(self.host, self.EEGPort)
+        send_tcp(b'', sock)
+        print(f"[{self.name}] Connected. Waiting for data...")
+        print(f"[{self.name}] Starting the recording")
+        while not self.event_socket._stop.is_set():
+            try:
+                ts, data = recv_tcp(sock)
+                # matrix_bytes = pickle.loads(data)
+                for row in data:    self.file.write(' '.join(map(str, row)) + '\n')
+                # Write n-1 empty lines to the timestamps file
+                self.fileTimestamp.write(f"{ts}\n")
+                for _ in range(data.shape[0] - 1):  self.fileTimestamp.write("-\n")
 
-                    
-                    # Write n-1 empty lines to the timestamps file
-                    self.fileTimestamp.write(f"{ts}\n")
-                    for _ in range(data.shape[0] - 1):  self.fileTimestamp.write("-\n")
+            except Exception as e:
+                print(f"[{self.name}] Error or disconnected:", e)
+                break
+        sock.close()
+        
 
-                    if keyboard.is_pressed('f3'):    
-                        print(f"[{self.name}] Escape key pressed, exiting.")
-                        break
-                except Exception as e:
-                    print(f"[{self.name}] Error or disconnected:", e)
-                    break
-            sock.close()
-            self.saveData()
+    def close(self):
+        self.event_socket._stop.set()
+        self.close_all()
+        self.saveData()
+        del self.file
+        print(f"[{self.name}] Recorder closed.")
 
     def save_event(self, ts, eventCode):
         self.fileEvents.write(f"{ts} {eventCode}\n")
@@ -95,7 +99,6 @@ class Recorder:
         self.fileEvents.close()
 
     def saveData(self):
-        self.close_all()  
         self.join_Txts()
         print("Files closed and saved successfully.")
 
@@ -149,6 +152,9 @@ class Recorder:
             print(f"[{self.name}] Mismatches found on events:")
             for x, c1, c2 in mismatches:    print(f"    -  {x}: {c1} opened vs {c2} closed")
         return correct
+
+    def __del__(self):
+        if hasattr(self, 'file'):   self.file.close()
 
 
 

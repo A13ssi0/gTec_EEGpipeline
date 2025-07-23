@@ -47,6 +47,7 @@ class UDPServer(threading.Thread):
 
     def close(self):
         self._stop.set()
+        self.sock.close()
         print(f"[{self.serverName}] Closed.")
 
 
@@ -130,8 +131,8 @@ class TCPServer(threading.Thread):
             handler.start()
 
         except socket.timeout:
-            handler = TCPClientHandler(conn, addr, self)
-            handler.start()
+            print(f"[{self.serverName}] Timeout selecting handler from {addr}")
+            conn.close()
 
         except Exception as e:
             print(f"[{self.serverName}] Error choosing handler: {e}")
@@ -148,6 +149,7 @@ class TCPServer(threading.Thread):
                 print(f"[+][{self.serverName}] Client connected: {addr}")
                 self.choose_handler(conn, addr)
             except Exception as e:
+                if self._stop.is_set(): break
                 print(f"[{self.serverName}] Accept error: {e}")
 
     def remove_client(self, conn):
@@ -176,7 +178,10 @@ class TCPServer(threading.Thread):
         self._stop.set()
         with self.clients_lock:
             for client in self.clients:
-                client.close()
+                try:                client.close()
+                except Exception:   pass
+            self.clients.clear()
+        self.sock.close()
         print(f"[{self.serverName}] Closed.")
 
 # Server For Filters

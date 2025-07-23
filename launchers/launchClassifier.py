@@ -11,9 +11,10 @@ if parent_dir not in sys.path:
 
 from classNodes.Classifier import Classifier
 
-modelPath = int(sys.argv[1]) 
+modelPath = sys.argv[1]
 managerPort = int(sys.argv[2]) 
-laplacianPath = int(sys.argv[3]) if len(sys.argv) > 3 else None
+laplacianPath = sys.argv[3] if len(sys.argv) > 3 else None
+if modelPath.endswith('test'): modelPath = 'test'
 
 ncls = Classifier(modelPath=modelPath, managerPort=managerPort, laplacianPath=laplacianPath)
 ncls.run()  # Start the recorder, which will connect to the server and start receiving data 

@@ -8,6 +8,7 @@ class PortManager:
     def __init__(self, host=HOST, managerPort=5000):
         self.dictPorts = {}
         self.port_socket = UDPPortManagerServer(host=host, port=managerPort, serverName='PortManager', node=self)
+        keyboard.add_hotkey('q', self.close)
 
 
     def set_dictPorts(self, ports_dict):
@@ -27,12 +28,8 @@ class PortManager:
     def run(self):
         self.port_socket.start()
         while not self.port_socket._stop.is_set():
-            if keyboard.is_pressed('F12'):
-                self.port_socket._stop.set()
             time.sleep(0.1)
-        self.close()
-            
-
+    
     def close(self):
         self.port_socket.close()
         del self.dictPorts

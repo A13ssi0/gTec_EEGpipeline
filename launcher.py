@@ -14,7 +14,7 @@ portManagerPort = str(25798)  # Port for the Port Manager
 
 recFolder = f'{genPath}/data/recordings/'
 laplacianPath = f'{genPath}/lapMask16Nautilus.mat'  # Path to the laplacian mask
-modelPath = f'{genPath}/'  # Path to the model
+modelFolder = f'{genPath}/'  # Path to the model
 
 # ---------------------------------------------------------------------------------------------
 
@@ -24,6 +24,7 @@ task = 'mi_bfbh'  # Default task
 
 # device = 'UN-2023.07.19'
 device = 'test'  # Default device for testing
+model = 'test'  # Default model for testing
 lenWindowVisualizer = '10' 
 
 # ---------------------------------------------------------------------------------------------
@@ -36,10 +37,10 @@ portDict['EventBus'] = free_ports[3]
 
 # ---------------------------------------------------------------------------------------------
 
-subprocess.Popen([sys.executable, "launchers\launchPortManager.py", portManagerPort, json.dumps(portDict)]) # F12
-subprocess.Popen([sys.executable, "launchers\launchAcquisition.py", device, portManagerPort])  # esc 
-subprocess.Popen([sys.executable, "launchers\launchFilter.py", portManagerPort])  # F1
-# subprocess.Popen([sys.executable, "launchers\launchVisualizer.py", portManagerPort, lenWindowVisualizer]) # F2
-# subprocess.Popen([sys.executable, "launchers\launchRecorder.py", portManagerPort, subjectCode, recFolder, runType, task]) # F3
-# subprocess.Popen([sys.executable, "launchers\launchClassifier.py", modelPath, portManagerPort, laplacianPath]) # F5
+# subprocess.Popen([sys.executable, "launchers\launchPortManager.py", portManagerPort, json.dumps(portDict)]) # q
+# subprocess.Popen([sys.executable, "launchers\launchAcquisition.py", device, portManagerPort])  # w 
+# subprocess.Popen([sys.executable, "launchers\launchFilter.py", portManagerPort])  # e
+# subprocess.Popen([sys.executable, "launchers\launchVisualizer.py", portManagerPort, lenWindowVisualizer]) # r
+# subprocess.Popen([sys.executable, "launchers\launchRecorder.py", portManagerPort, subjectCode, recFolder, runType, task]) # t
+# subprocess.Popen([sys.executable, "launchers\launchClassifier.py", f'{modelFolder}{model}', portManagerPort, laplacianPath]) # y
 

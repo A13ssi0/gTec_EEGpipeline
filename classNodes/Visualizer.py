@@ -4,6 +4,7 @@ import time, socket, io, ast
 from utils.buffer import BufferVisualizer
 from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp
 from datetime import datetime, date
+import keyboard, threading
 
 HOST = '127.0.0.1'
 
@@ -17,6 +18,9 @@ class Visualizer:
         self.scale = 1000
         neededPorts = ['FilteredData', 'InfoDictionary']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
+
+        self._stop = threading.Event()
+        # keyboard.add_hotkey('F2', self.close)
 
 
     def init_sockets(self, managerPort, neededPorts):
@@ -32,6 +36,16 @@ class Visualizer:
         self.InfoDictPort = portDict['InfoDictionary']
             
 
+    def close(self):
+        self._stop.set()
+        self.dataSocket.close()
+        del self.app
+        print(f"[{self.name}] Closed.")
+
+    def keyPressEvent(self, event):
+        if event.key() == pg.QtCore.Qt.Key.Key_R:
+            self.app.quit()
+            self.close()
 
 
     def run(self):
@@ -48,13 +62,12 @@ class Visualizer:
             print(f"[{self.name}] Received info dictionary")
             
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM):
-            self.socket = wait_for_tcp_server(self.host, self.FilteredPort)
-            send_tcp(b'FILTERS', self.socket)
-            print(f"[{self.name}] Connected. Waiting for data...")
-            self.setup()
-            print(f"[{self.name}] Starting the visualization")
-            self.app.exec()
+        self.dataSocket = wait_for_tcp_server(self.host, self.FilteredPort)
+        send_tcp(b'FILTERS', self.dataSocket)
+        print(f"[{self.name}] Connected. Waiting for data...")
+        self.setup()
+        print(f"[{self.name}] Starting the visualization")
+        self.app.exec()
 
 
     def on_number_entered(self):
@@ -64,9 +77,9 @@ class Visualizer:
             cutHp = f'/hp{hp}' if hp else ''
             cutLp = f'/lp{lp}' if lp else ''
             message = f'FILTERS{cutHp}{cutLp}'
-            send_tcp(message.encode('utf-8'), self.socket)
+            send_tcp(message.encode('utf-8'), self.dataSocket)
         else:
-            send_tcp('FILTERS', self.socket)
+            send_tcp('FILTERS', self.dataSocket)
 
     def on_scale_entered(self):
         self.scale = int(self.input_scale.text())
@@ -150,6 +163,7 @@ class Visualizer:
 
         self.main_widget.keyPressEvent = self.keyPressEvent
 
+
     def _create_input(self, label_text, layout, function, placeholder="/"):
         label = pg.QtWidgets.QLabel(label_text)
         input_field = pg.QtWidgets.QLineEdit()
@@ -160,10 +174,6 @@ class Visualizer:
         layout.addWidget(input_field)
         return input_field
 
-    def keyPressEvent(self, event):
-        if event.key() == pg.QtCore.Qt.Key.Key_F2:
-            print("[Visualizer] F2 key pressed, exiting.")
-            self.app.quit()
 
     def update_plot(self):
         # if self.counter >= 500:
@@ -178,7 +188,7 @@ class Visualizer:
 
     def handle_data(self):
         try:
-            ts, matrix = recv_tcp(self.socket)
+            ts, matrix = recv_tcp(self.dataSocket)
             # a = datetime.now().time()
             if self.applyCAR:
                 matrix -= np.mean(matrix, axis=1, keepdims=True)
@@ -193,3 +203,7 @@ class Visualizer:
         except Exception as e:
             print("[Visualizer] Error or disconnected:", e)
             self.app.quit()
+
+    def __del__(self):
+        if hasattr(self, 'app'):    self.keyPressEvent(pg.QtCore.Qt.Key.Key_R)
+

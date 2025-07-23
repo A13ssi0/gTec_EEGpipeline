@@ -2,7 +2,7 @@ import socket
 from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp
 import keyboard
 import ast  # For safely converting string dicts
-from datetime import datetime, date
+# from datetime import datetime, date
 
 HOST = '127.0.0.1'
 
@@ -11,10 +11,10 @@ class Filter:
         self.host = HOST
         self.name = 'Filter'
         self.filter = []
-        self.stop = False
 
         neededPorts = ['InfoDictionary', 'EEGData', 'FilteredData']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
+        keyboard.add_hotkey('e', self.close)
 
 
     def init_sockets(self, managerPort, neededPorts):
@@ -49,41 +49,41 @@ class Filter:
         # Wait for TCP data source
 
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM):
-                tcp_sock = wait_for_tcp_server(self.host, self.EEGPort)
-                send_tcp(b'', tcp_sock)
-                print(f"[{self.name}] Connected to data source. Starting filter loop...")
+            tcp_sock = wait_for_tcp_server(self.host, self.EEGPort)
+            send_tcp(b'', tcp_sock)
+            print(f"[{self.name}] Connected to data source. Starting filter loop...")
 
-                while not self.stop:
-                    try:
-                        ts, matrix = recv_tcp(tcp_sock)
-                        
-                        if matrix is None:  # If no data received, break the loop
-                            print(f"[{self.name}] No data received. Exiting filter loop.")
-                            break
+            while not self.Filtered_socket._stop.is_set():
+                try:
+                    ts, matrix = recv_tcp(tcp_sock)
                     
-                        # a = datetime.now().time()
-                        # ts = datetime.strptime(ts, "%H:%M:%S.%f").time()
-                        # dt_a = datetime.combine(date.today(), a)
-                        # dt_b = datetime.combine(date.today(), ts)
-
-                        # print(f"[{self.name}] Info with a delay of {dt_a - dt_b}")
-
-                        if self.filter: 
-                            for filt in self.filter: matrix = filt.filter(matrix)
-                       
-                        self.Filtered_socket.broadcast(matrix)
-
-                        if keyboard.is_pressed('F1'):
-                            self.stop = True
-
-                    except Exception as e:
-                        print(f"[{self.name}] Data processing error: {e}")
+                    if matrix is None:  # If no data received, break the loop
+                        print(f"[{self.name}] No data received. Exiting filter loop.")
                         break
+                
+                    # a = datetime.now().time()
+                    # ts = datetime.strptime(ts, "%H:%M:%S.%f").time()
+                    # dt_a = datetime.combine(date.today(), a)
+                    # dt_b = datetime.combine(date.today(), ts)
+
+                    # print(f"[{self.name}] Info with a delay of {dt_a - dt_b}")
+
+                    if self.filter: 
+                        for filt in self.filter: matrix = filt.filter(matrix)
+                
+                    self.Filtered_socket.broadcast(matrix)
+
+                except Exception as e:
+                    print(f"[{self.name}] Data processing error: {e}")
+                    break
         finally:
-            self.close()
+            tcp_sock.close()
+        
 
     def close(self):
-        self.stop = True
         self.Filtered_socket.close()
+        del self.filter
         print(f"[{self.name}] Finished.")
+
+    def __del__(self):
+        if hasattr(self, 'filter'):     self.close()
