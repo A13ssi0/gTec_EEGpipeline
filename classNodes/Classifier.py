@@ -3,16 +3,14 @@
 import utils as utils
 from scipy.io import loadmat
 from pyriemann.utils.test import is_sym_pos_def
-import socket, ast
 from utils.buffer import Buffer
 from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp
 from py_utils.data_managment import load
 from py_utils.eeg_managment import get_channelsMask
 from py_utils.signal_processing import get_covariance_matrix_traceNorm_online
 from riemann_utils.covariances import center_covariance_online
-import keyboard
+import keyboard, socket, ast, threading
 import numpy as np
-import threading
 
 
 HOST = '127.0.0.1'
@@ -21,7 +19,7 @@ class Classifier:
     def __init__(self, modelPath, managerPort=25798, laplacianPath=None):
         self.name = 'Classifier'
         self.host = HOST
-        self._stop = threading.Event()
+        self._stopEvent = threading.Event()
 
         self.classifier_dict = load(modelPath)  if modelPath!='test' else None
         self.buffer = Buffer((self.classifier_dict['windowsLength'], len(self.classifier_dict['channels']))) if modelPath!='test' else None
@@ -30,8 +28,6 @@ class Classifier:
 
         neededPorts = ['FilteredData', 'InfoDictionary']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
-
-        keyboard.add_hotkey('y', self.close)
       
 
     def init_sockets(self, managerPort, neededPorts):
@@ -47,21 +43,18 @@ class Classifier:
         self.InfoDictPort = portDict['InfoDictionary']
             
             
-
     def run(self):
-        # Wait and retrieve info from UDP server
         wait_for_udp_server(self.host, self.InfoDictPort)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            send_udp(udp_sock, (self.host,self.InfoDictPort), "GET_INFO")  # Request info from the server
+            send_udp(udp_sock, (self.host,self.InfoDictPort), "GET_INFO") 
             _, raw_info, _ = recv_udp(udp_sock)
             try:
-                self.info = ast.literal_eval(raw_info)  # safely parse string dict
+                self.info = ast.literal_eval(raw_info) 
             except Exception as e:
                 print(f"[{self.name}] Failed to parse info: {e}")
                 self.info = {}
 
         print(f"[{self.name}] Received info dictionary")
-        # Wait for TCP data source
 
         if self.classifier is None: self.start_fake_classifier()
         else:                       self.start_classifier()
@@ -74,7 +67,7 @@ class Classifier:
         value = 0.5
         step = 0.02     # at 25 Hz, this gives a 0.5 movement in 1 second
 
-        while not self._stop.is_set():
+        while not self._stopEvent.is_set():
             try:
                 _, _ = recv_tcp(tcp_sock)
                 prob = np.array([value, 1-value])  # Simulated probabilities
@@ -82,7 +75,7 @@ class Classifier:
                 if keyboard.is_pressed('left'):         value += step
                 elif keyboard.is_pressed('right'):      value -= step
             except Exception as e:
-                print(f"[{self.name}] Data processing error: {e}")
+                if not not self._stopEvent.is_set():   print(f"[{self.name}] Data processing error: {e}")
                 break
 
 
@@ -119,9 +112,8 @@ class Classifier:
                 if self.laplacian is not None:  matrix = matrix @ self.laplacian
                 self.buffer.add_data(matrix[:, channelMask])
 
-            while not self._stop.is_set():
+            while not self._stopEvent.is_set():
                 try:
-                    # ## ----------------------------------------------------------------------------- Covariances
                     cov = get_covariance_matrix_traceNorm_online(self.buffer.data)
 
                     if self.classifier_dict['inv_sqrt_mean_cov'] is not None:
@@ -144,11 +136,10 @@ class Classifier:
 
 
     def close(self):
-        self._stop.set()
-        if hasattr(self,'classifier'): del self.classifier
+        self._stopEvent.set()
         print(f"[{self.name}] Finished.")
 
     def __del__(self):
-        if hasattr(self,'classifier'):   self.close()
+        if not self._stopEvent.is_set():   self.close()
 
 

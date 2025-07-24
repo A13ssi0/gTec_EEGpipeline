@@ -1,21 +1,23 @@
-import sys
-import os
+import sys, os
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-import socket
-import threading
+import socket, threading, time, io, keyboard
 import numpy as np
-import time
-import io
 from py_utils.signal_processing import RealTimeButterFilter
-import keyboard
 from datetime import datetime
 
 
+SERVERS_LIST = []
 
+def emergency_kill():
+    keyboard.wait('F12')
+    print("[EMERGENCY] F12 pressed — shutting down all servers")
+    for server in SERVERS_LIST:
+        try:    server.close()
+        except Exception as e:   print(f"[EMERGENCY] Error shutting down {server}: {e}")
 
 # ----------------------------
 # UDP Server
@@ -31,73 +33,70 @@ class UDPServer(threading.Thread):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((self.host, self.port))
-        self._stop = threading.Event()
+        self._stopEvent = threading.Event()
+        self.sock.settimeout(0.5)
+        SERVERS_LIST.append(self)
+
 
     def run(self):
-        while not self._stop.is_set():
-            try:
-                _, msg, addr = recv_udp(self.sock)
+        try:
+            while not self._stopEvent.is_set():
+                try:
+                    _, msg, addr = recv_udp(self.sock)
 
-                if msg == 'GET_INFO' and self.node: send_udp(self.sock, addr, str(self.node.info))
-                elif msg == 'PING':     send_udp(self.sock, addr, 'PONG')
-                else:   print(f"[{self.serverName}] Unknown message from {addr}: {msg}")
+                    if      msg == 'PING':     send_udp(self.sock, addr, 'PONG')
+                    elif    msg == 'GET_INFO': send_udp(self.sock, addr, str(self.node.info))
+                    elif    'PORT' in msg:    self.manage_ports(msg, addr)
+                    else:   print(f"[{self.serverName}] Unknown message from {addr}: {msg}")
+                except socket.timeout:  continue
+                except Exception as e:
+                    if self._stopEvent.is_set(): break
+                    print(f"[{self.serverName}] Error: {e}")
+        finally:
+            self.sock.close()
+            print(f"[{self.serverName}] Closed.")
 
-            except Exception as e:
-                print(f"[{self.serverName}] Error: {e}")
-
+    def manage_ports(self, msg, addr):
+        port_name = msg.split('/')[1]
+        if msg.startswith('GET_PORT'):
+            send_udp(self.sock, addr, self.node.get_port(port_name))
+        elif msg.startswith('ADD_PORT'):
+            port_info = msg.split('/')[2]
+            self.node.add_port(port_name, port_info)
+      
     def close(self):
-        self._stop.set()
-        self.sock.close()
-        print(f"[{self.serverName}] Closed.")
+        self._stopEvent.set()
 
+    def __del__(self):
+        if not self._stopEvent.is_set(): self.close()
 
-class UDPPortManagerServer(UDPServer):
-    def __init__(self, host='127.0.0.1', port=5000, serverName='UDP', node=None):
-        super().__init__(host, port, serverName, node)
-
-    def run(self):
-        while not self._stop.is_set():
-            try:
-                _, msg, addr = recv_udp(self.sock)
-                
-                if msg == 'PING':     send_udp(self.sock, addr, 'PONG')
-                elif msg.startswith('GET_PORT'):
-                    port_name = msg.split('/')[1]
-                    send_udp(self.sock, addr, self.node.get_port(port_name))
-                elif msg.startswith('ADD_PORT'):
-                    port_name = msg.split('/')[1]
-                    port_info = msg.split('/')[2]
-                    self.node.add_port(port_name, port_info)
-                else:   print(f"[{self.serverName}] Unknown message from {addr}: {msg}")
-
-            except Exception as e:
-                print(f"[{self.serverName}] Error: {e}")
 
 
 # ----------------------------
 # TCP Server
 # ----------------------------
-
-class TCPClientHandler(threading.Thread):
-    def __init__(self, conn, addr, server):
-        super().__init__(daemon=True)
-        self.conn = conn
-        self.addr = addr
-        self.server = server
-
-    def run(self):
-        try:
-            while not self.server._stop.is_set():
-                ts, matrix = recv_tcp(self.conn)
-                msg = matrix.decode('utf-8', errors='ignore') if isinstance(matrix, bytes) else ""
-                if msg.startswith('ev'): self.node.save_event(ts, msg[2:])  # Save event with timestamp
-
-        except Exception as e:
-            print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
-        finally:
-            try:    self.server.remove_client(self.conn)
-            except: pass
-            self.conn.close()
+# class TCPProbabilitiesClientHandler(threading.Thread):
+#     def __init__(self, conn, addr, server, index):
+#         super().__init__(daemon=True)
+#         self.conn = conn
+#         self.addr = addr
+#         self.server = server
+#         self.index = index
+ 
+#     def run(self):
+#         try:
+#             while not self.server._stopEvent.is_set():
+#                 ts, msg = recv_tcp(self.conn)
+#                 # msg = matrix.decode('utf-8', errors='ignore') if isinstance(matrix, bytes) else ""
+#                 if msg.startswith('ev'): self.node.save_event(ts, msg[2:])  # Save event with timestamp
+#         except socket.timeout:
+#             pass
+#         except Exception as e:
+#             print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
+#         finally:
+#             try:    self.server.remove_client(self.conn)
+#             except: pass
+#             self.conn.close()
 
 
 class TCPServer(threading.Thread):
@@ -112,45 +111,48 @@ class TCPServer(threading.Thread):
         self.sock.bind((self.host, self.port))
         self.sock.listen()
         self.clients = []
+        self.probabilities = []
         self.clients_lock = threading.Lock()
-        self._stop = threading.Event()
+        self._stopEvent = threading.Event()
+        self.sock.settimeout(0.5)
+        SERVERS_LIST.append(self)
+
+
+    def run(self):
+        print(f"[{self.serverName}] Listening on {self.host}:{self.port}")
+        try:
+            while not self._stopEvent.is_set():
+                try:
+                    conn, addr = self.sock.accept()
+                    conn.settimeout(0.1)
+                    with self.clients_lock: self.clients.append(conn)
+                    print(f"[+][{self.serverName}] Client connected: {addr}")
+                    self.choose_handler(conn, addr)
+                except socket.timeout:  continue
+                except Exception as e:
+                    if self._stopEvent.is_set(): print(f"[{self.serverName}] Accept error: {e}")
+        finally:
+            self.cleanup()
+            print(f"[{self.serverName}] Closed.")
+
 
     def choose_handler(self, conn, addr):
         try:
             conn.settimeout(10)
             _, msg = recv_tcp(conn)
             conn.settimeout(None)
-            msg = msg.decode('utf-8', errors='ignore') if isinstance(msg, bytes) else ""
-            if msg == "FILTERS":
-                handler = TCPFilterClientHandler(conn, addr, self)
-                handler.start()
-                return
-
-            # default handler
-            handler = TCPClientHandler(conn, addr, self)
-            handler.start()
-
-        except socket.timeout:
-            print(f"[{self.serverName}] Timeout selecting handler from {addr}")
-            conn.close()
-
+            if msg == "FILTERS":    TCPFilterClientHandler(conn, addr, self).start()  
+            else:                   TCPClientHandler(conn, addr, self).start() 
         except Exception as e:
-            print(f"[{self.serverName}] Error choosing handler: {e}")
-            conn.close()
-
-
-    def run(self):
-        print(f"[{self.serverName}] Listening on {self.host}:{self.port}")
-        while not self._stop.is_set():
-            try:
-                conn, addr = self.sock.accept()
-                with self.clients_lock:
-                    self.clients.append(conn)
-                print(f"[+][{self.serverName}] Client connected: {addr}")
-                self.choose_handler(conn, addr)
-            except Exception as e:
-                if self._stop.is_set(): break
-                print(f"[{self.serverName}] Accept error: {e}")
+            print(f"[{self.serverName}] Handler selection error: {e}")
+            try: conn.close()
+            except: pass
+               
+            # elif msg == "PROBABILITIES":
+            #     self.probabilities.append([])
+            #     handler = TCPProbabilitiesClientHandler(conn, addr, self, len(self.probabilities) - 1)
+            #     handler.start()
+            #     return
 
     def remove_client(self, conn):
         with self.clients_lock:
@@ -158,52 +160,66 @@ class TCPServer(threading.Thread):
                 print(f"[-][{self.serverName}] Client removed: {conn.getpeername()}")
                 self.clients.remove(conn)
 
+
     def broadcast(self, data):
-        try:
-            full_payload = send_tcp(data, sock=None) 
+        with self.clients_lock: clients = self.clients.copy()
+
+        try:    full_payload = send_tcp(data, sock=None) 
         except Exception as e:
             print(f"[{self.serverName}] Data preparation error: {e}")
             return
+        
+        for client in clients:
+            try:    client.sendall(full_payload)
+            except Exception as e:
+                print(f"[{self.serverName}] Broadcast error: {e}")
+                self.remove_client(client)
+                try:    client.close()
+                except: pass
 
+    def cleanup(self):
         with self.clients_lock:
-            for client in self.clients[:]:
-                try:
-                    client.sendall(full_payload)
-                except Exception as e:
-                    print(f"[{self.serverName}] Broadcast error: {e}")
-                    self.remove_client(client)
-                    client.close()
+            for conn in self.clients:
+                try:        conn.shutdown(socket.SHUT_RDWR)
+                except:     pass
+                try:    conn.close()
+                except: pass
+            self.clients.clear()
+        try:    self.sock.close()
+        except: pass
 
     def close(self):
-        self._stop.set()
-        with self.clients_lock:
-            for client in self.clients:
-                try:                client.close()
-                except Exception:   pass
-            self.clients.clear()
-        self.sock.close()
-        print(f"[{self.serverName}] Closed.")
+        self._stopEvent.set()
 
-# Server For Filters
-class TCPFilterClientHandler(TCPClientHandler):
+    def __del__(self):
+        if not self._stopEvent.is_set(): self.close()
 
+
+class TCPClientHandler(threading.Thread):
     def __init__(self, conn, addr, server):
-        super().__init__(conn, addr, server)
+        super().__init__(daemon=True)
+        self.conn = conn
+        self.addr = addr
+        self.server = server
+        self._stopEvent = server._stopEvent
 
     def run(self):
         try:
-            while not self.server._stop.is_set():
-                _, matrix = recv_tcp(self.conn)
-                # Handle filters sent from client
-                msg = matrix.decode('utf-8', errors='ignore') if isinstance(matrix, bytes) else ""
-                if msg.startswith('FILTERS'):               self.handle_filter_command(msg)
-                elif msg.startswith('APPEND_FILTERS'):      self.handle_filter_command(msg, append=True)
+            while not self._stopEvent.is_set():
+                ts, msg = recv_tcp(self.conn)
+                if msg.startswith('ev'): self.node.save_event(ts, msg[2:])
+                elif 'FILTERS' in msg:    self.manage_ports(msg)
+
         except Exception as e:
-            print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
+            if not self._stopEvent.is_set():    print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
         finally:
             try:    self.server.remove_client(self.conn)
             except: pass
-            self.conn.close()
+            self.safe_close()
+
+    def manage_filters(self, msg):
+        if msg.startswith('FILTERS'):               self.handle_filter_command(msg)
+        elif msg.startswith('APPEND_FILTERS'):      self.handle_filter_command(msg, append=True)
 
     def handle_filter_command(self, msg, append=False):
         parts = msg.split('/')
@@ -235,6 +251,37 @@ class TCPFilterClientHandler(TCPClientHandler):
             print(f"[{self.server.serverName}] Filter parse error: {e}")
 
 
+    def safe_close(self):
+        try:    self.conn.shutdown(socket.SHUT_RDWR)
+        except Exception:   pass
+        try:    self.conn.close()
+        except Exception:   pass
+
+
+class TCPFilterClientHandler(threading.Thread):
+    def __init__(self, conn, addr, server):
+        super().__init__(daemon=True)
+        self.conn = conn
+        self.addr = addr
+        self.server = server
+        self._stopEvent = server._stopEvent
+
+
+    def run(self):
+        try:
+            while not self._stopEvent.is_set():
+                _, msg = recv_tcp(self.conn)
+                
+        except Exception as e:
+            if not self._stopEvent.is_set():    print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
+        finally:
+            try:    self.server.remove_client(self.conn)
+            except: pass
+            self.conn.close()
+
+    
+
+
 
 # ----------------------------
 # Helper Functions
@@ -263,7 +310,7 @@ def recv_tcp(sock):
             matrix = np.load(io.BytesIO(payload))
             return timestamp, matrix
         except Exception:
-            return timestamp, None
+            return timestamp, payload.decode('utf-8', errors='ignore')
 
     except Exception as e:
         raise ConnectionError(f"TCP receive failed: {e}")

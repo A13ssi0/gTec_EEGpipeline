@@ -1,14 +1,13 @@
-from utils.server import UDPPortManagerServer
-import keyboard
-import time
+from utils.server import UDPServer, emergency_kill
+import time, threading
 
 HOST = '127.0.0.1'
 
 class PortManager:
     def __init__(self, host=HOST, managerPort=5000):
         self.dictPorts = {}
-        self.port_socket = UDPPortManagerServer(host=host, port=managerPort, serverName='PortManager', node=self)
-        keyboard.add_hotkey('q', self.close)
+        self.port_socket = UDPServer(host=host, port=managerPort, serverName='PortManager', node=self)
+        threading.Thread(target=emergency_kill, daemon=True).start()
 
 
     def set_dictPorts(self, ports_dict):
@@ -27,14 +26,13 @@ class PortManager:
     
     def run(self):
         self.port_socket.start()
-        while not self.port_socket._stop.is_set():
+        while not self.port_socket._stopEvent.is_set():
             time.sleep(0.1)
     
     def close(self):
         self.port_socket.close()
-        del self.dictPorts
-        print("[PortManager]: Port manager closed.")
+        if self.port_socket.is_alive():  self.port_socket.join(timeout=0.5)
 
     def __del__(self):
-        if hasattr(self, 'dictPorts') :      self.close()
+        if not self.port_socket._stopEvent.is_set():    self.close()
 

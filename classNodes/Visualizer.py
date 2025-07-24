@@ -1,10 +1,8 @@
 import numpy as np
 import pyqtgraph as pg
-import time, socket, io, ast
+import socket, ast, threading
 from utils.buffer import BufferVisualizer
 from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp
-from datetime import datetime, date
-import keyboard, threading
 
 HOST = '127.0.0.1'
 
@@ -19,8 +17,7 @@ class Visualizer:
         neededPorts = ['FilteredData', 'InfoDictionary']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
 
-        self._stop = threading.Event()
-        # keyboard.add_hotkey('F2', self.close)
+        self._stopEvent = threading.Event()
 
 
     def init_sockets(self, managerPort, neededPorts):
@@ -37,23 +34,22 @@ class Visualizer:
             
 
     def close(self):
-        self._stop.set()
+        self._stopEvent.set()
         self.dataSocket.close()
-        del self.app
+        self.app.quit()
         print(f"[{self.name}] Closed.")
 
+
     def keyPressEvent(self, event):
-        if event.key() == pg.QtCore.Qt.Key.Key_R:
-            self.app.quit()
-            self.close()
+        if event.key() == pg.QtCore.Qt.Key.Key_F4:  self.close()
 
 
     def run(self):
         wait_for_udp_server(self.host, self.InfoDictPort)
 
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            send_udp(sock, (self.host,self.InfoDictPort), "GET_INFO")  # Request info from the server
-            ts, info_str, addr = recv_udp(sock)
+            send_udp(sock, (self.host,self.InfoDictPort), "GET_INFO")  
+            _, info_str, _ = recv_udp(sock)
             try:
                 self.info = ast.literal_eval(info_str)
             except Exception as e:
@@ -176,34 +172,22 @@ class Visualizer:
 
 
     def update_plot(self):
-        # if self.counter >= 500:
-        #     print(f"Time elapsed: {time.time() - self.last_plot_time:.2f} s")
-        #     self.last_plot_time = time.time()
-        #     self.counter = 0
-        # if self.counter == 0:
-        #     self.last_plot_time = time.time()
         data = self.buffer.data
         for i, curve in enumerate(self.curves):
             curve.setData(data[:, i]/self.scale + i)
 
     def handle_data(self):
         try:
-            ts, matrix = recv_tcp(self.dataSocket)
-            # a = datetime.now().time()
+            _, matrix = recv_tcp(self.dataSocket)
             if self.applyCAR:
                 matrix -= np.mean(matrix, axis=1, keepdims=True)
             self.buffer.add_data(matrix)
 
-            # ts = datetime.strptime(ts, "%H:%M:%S.%f").time()
-            # dt_a = datetime.combine(date.today(), a)
-            # dt_b = datetime.combine(date.today(), ts)
-
-            # print(f"[{self.name}] Info with a delay of {dt_a - dt_b}")
-            # self.counter += self.info['dataChunkSize']
         except Exception as e:
-            print("[Visualizer] Error or disconnected:", e)
+            if not self._stopEvent.is_set(): print("[Visualizer] Error or disconnected:", e)
             self.app.quit()
 
     def __del__(self):
-        if hasattr(self, 'app'):    self.keyPressEvent(pg.QtCore.Qt.Key.Key_R)
+        if not self._stopEvent.is_set():    self.close()
+
 

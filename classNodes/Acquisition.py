@@ -1,11 +1,7 @@
 import numpy as np
-import pygds
-import time
-import keyboard
-from utils.server import wait_for_udp_server, send_udp, recv_udp, UDPServer, TCPServer
-import socket, ast
+import pygds, time, threading, socket, UnicornPy
+from utils.server import wait_for_udp_server, send_udp, recv_udp, UDPServer, TCPServer, emergency_kill
 from scipy.io import loadmat
-import UnicornPy
 from py_utils.data_managment import fix_mat
 
 
@@ -20,7 +16,8 @@ class Acquisition:
         neededPorts = ['InfoDictionary', 'EEGData']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
 
-        keyboard.add_hotkey('w', self.close)
+        threading.Thread(target=emergency_kill, daemon=True).start()
+
 
 
     def init_sockets(self, managerPort, neededPorts):
@@ -54,7 +51,7 @@ class Acquisition:
         self.InfoDict_socket.start()
         self.EEG_socket.start()
 
-        while not self.EEG_socket._stop.is_set():
+        while not self.EEG_socket._stopEvent.is_set():
             data = np.random.randn(self.info['dataChunkSize'], n_channels).astype(np.float32)*1000
             self.data_callback(data)
             time.sleep(sleep_time)
@@ -72,7 +69,7 @@ class Acquisition:
         self.EEG_socket.start()
 
         pointer = 0
-        while not self.EEG_socket._stop.is_set():
+        while not self.EEG_socket._stopEvent.is_set():
             self.data_callback(signal[pointer:pointer + self.info['dataChunkSize'], :])
             pointer += self.info['dataChunkSize']
             if pointer + self.info['dataChunkSize'] >= signal.shape[0]:   
@@ -80,7 +77,6 @@ class Acquisition:
                 pointer = 0
             time.sleep(sleep_time)
 
-            
 
     def _run_real_device(self):
         try:        self._run_nautilus()
@@ -96,20 +92,20 @@ class Acquisition:
         self.SetUnicornSettings()
         receiveBufferBufferLength = self.info['dataChunkSize'] * numberOfAcquiredChannels * 4
         receiveBuffer = bytearray(receiveBufferBufferLength)
+
         self.unicorn.StartAcquisition(False)
         print(f"[{self.name}] Starting real acquisition with Unicorn...")
         self.InfoDict_socket.start()
         self.EEG_socket.start()
         try:
-            while not self.EEG_socket._stop.is_set():
+            while not self.EEG_socket._stopEvent.is_set():
                 self.unicorn.GetData(self.info['dataChunkSize'],receiveBuffer,receiveBufferBufferLength)
-
                 data = np.frombuffer(receiveBuffer, dtype=np.float32, count=numberOfAcquiredChannels * self.info['dataChunkSize'])
                 data = np.reshape(data, (self.info['dataChunkSize'], numberOfAcquiredChannels))
                 data = data[:, channelIndex]  # Reorder channels
                 self.data_callback(data)
-        except:
-            pass
+        except Exception as e:
+            print(f"[{self.name}] Error during Unicorn acquisition: {e}")
                                     
 
     def _run_nautilus(self):
@@ -141,27 +137,32 @@ class Acquisition:
 
 
     def data_callback(self, data):
-        # k = datetime.now().strftime("%H:%M:%S.%f")
-        # self.AAAAAAAA.write(f"{k}\n")
         self.nSamples += data.shape[0]
-
-        try:
-            self.EEG_socket.broadcast(data)
+        try:    self.EEG_socket.broadcast(data)
         except Exception as e:
             print(f"[{self.name}] Broadcast error: {e}")
-            self.EEG_socket._stop.set()
+            self.EEG_socket._stopEvent.set()
             return False
         return True
 
+
     def close(self):
-        # self.AAAAAAAA.close()
-        self.EEG_socket.close()
-        self.InfoDict_socket.close()
         if hasattr(self, 'nautilus') and self.nautilus:     del self.nautilus
         if hasattr(self, 'unicorn') and self.unicorn:       
             self.unicorn.StopAcquisition()
             del self.unicorn
 
+        try:
+            self.InfoDict_socket.close()
+            if self.InfoDict_socket.is_alive(): self.InfoDict_socket.join(timeout=0.5)
+        except Exception as e:
+            print(f"[{self.name}] InfoDict socket close error: {e}")
+        try:
+            self.EEG_socket.close()
+            if self.EEG_socket.is_alive():  self.EEG_socket.join(timeout=0.5)
+        except Exception as e:
+            print(f"[{self.name}] EEG socket close error: {e}")
+        
         print(f"[{self.name}] Finished streaming {self.nSamples} samples.")
    
 

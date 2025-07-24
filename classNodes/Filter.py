@@ -1,8 +1,6 @@
-import socket
-from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp
-import keyboard
-import ast  # For safely converting string dicts
-# from datetime import datetime, date
+import socket, ast, threading
+from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, emergency_kill
+  
 
 HOST = '127.0.0.1'
 
@@ -14,7 +12,8 @@ class Filter:
 
         neededPorts = ['InfoDictionary', 'EEGData', 'FilteredData']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
-        keyboard.add_hotkey('e', self.close)
+
+        threading.Thread(target=emergency_kill, daemon=True).start()
 
 
     def init_sockets(self, managerPort, neededPorts):
@@ -34,56 +33,49 @@ class Filter:
     def run(self):
         self.Filtered_socket.start()
 
-        # Wait and retrieve info from UDP server
         wait_for_udp_server(self.host, self.InfoDictPort)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            send_udp(udp_sock, (self.host,self.InfoDictPort), "GET_INFO")  # Request info from the server
-            ts, raw_info, addr = recv_udp(udp_sock)
+            send_udp(udp_sock, (self.host,self.InfoDictPort), "GET_INFO")  
+            _, raw_info, _ = recv_udp(udp_sock)
             try:
-                self.info = ast.literal_eval(raw_info)  # safely parse string dict
+                self.info = ast.literal_eval(raw_info) 
             except Exception as e:
                 print(f"[{self.name}] Failed to parse info: {e}")
                 self.info = {}
-
         print(f"[{self.name}] Received info dictionary")
-        # Wait for TCP data source
 
         try:
             tcp_sock = wait_for_tcp_server(self.host, self.EEGPort)
             send_tcp(b'', tcp_sock)
             print(f"[{self.name}] Connected to data source. Starting filter loop...")
 
-            while not self.Filtered_socket._stop.is_set():
+            while not self.Filtered_socket._stopEvent.is_set():
                 try:
-                    ts, matrix = recv_tcp(tcp_sock)
-                    
-                    if matrix is None:  # If no data received, break the loop
-                        print(f"[{self.name}] No data received. Exiting filter loop.")
-                        break
-                
-                    # a = datetime.now().time()
-                    # ts = datetime.strptime(ts, "%H:%M:%S.%f").time()
-                    # dt_a = datetime.combine(date.today(), a)
-                    # dt_b = datetime.combine(date.today(), ts)
-
-                    # print(f"[{self.name}] Info with a delay of {dt_a - dt_b}")
+                    _, matrix = recv_tcp(tcp_sock)
 
                     if self.filter: 
                         for filt in self.filter: matrix = filt.filter(matrix)
                 
-                    self.Filtered_socket.broadcast(matrix)
+                    try:    self.Filtered_socket.broadcast(matrix)
+                    except Exception as e:
+                        print(f"[{self.name}] Broadcast error: {e}")
+                        self.Filtered_socket._stopEvent.set()
 
                 except Exception as e:
-                    print(f"[{self.name}] Data processing error: {e}")
-                    break
+                    if not self.Filtered_socket._stopEvent.is_set():   print(f"[{self.name}] Data processing error: {e}")
+                    self.Filtered_socket._stopEvent.set()
+
+                    
         finally:
             tcp_sock.close()
         
 
     def close(self):
-        self.Filtered_socket.close()
-        del self.filter
-        print(f"[{self.name}] Finished.")
+        try:
+            self.Filtered_socket.close()
+            if self.Filtered_socket.is_alive(): self.Filtered_socket.join(timeout=0.5)
+        except Exception as e:
+            print(f"[{self.name}] Socket close error: {e}")
 
     def __del__(self):
-        if hasattr(self, 'filter'):     self.close()
+        if not self.Filtered_socket._stopEvent.is_set():     self.close()

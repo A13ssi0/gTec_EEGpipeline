@@ -1,10 +1,7 @@
-import socket
+import socket, os, threading, ast
 import numpy as np
 from scipy.io import savemat
-import os
-import keyboard
-from utils.server import recv_tcp, recv_udp, wait_for_udp_server, send_udp, send_tcp, TCPServer, wait_for_tcp_server
-import ast  # For safely converting string dicts
+from utils.server import recv_tcp, recv_udp, wait_for_udp_server, send_udp, send_tcp, TCPServer, wait_for_tcp_server, emergency_kill
 from datetime import datetime, timedelta    
 
 HOST = '127.0.0.1'
@@ -30,7 +27,7 @@ class Recorder:
         neededPorts = ['InfoDictionary', 'EEGData', 'EventBus']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
 
-        keyboard.add_hotkey('t', self.close)
+        threading.Thread(target=emergency_kill, daemon=True).start()
 
 
 
@@ -47,16 +44,13 @@ class Recorder:
         self.EEGPort = portDict['EEGData']
         self.event_socket = TCPServer(host=HOST, port=portDict['EventBus'], serverName='EventBus', node=self)
 
-
-
     def run(self):
         self.event_socket.start()
         wait_for_udp_server(self.host, self.InfoDictPort)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            send_udp(udp_sock, (self.host,self.InfoDictPort), "GET_INFO")  # Request info from the server
+            send_udp(udp_sock, (self.host,self.InfoDictPort), "GET_INFO")
             _, raw_info, _ = recv_udp(udp_sock)
-            try:
-                self.info = ast.literal_eval(raw_info)  # safely parse string dict
+            try:    self.info = ast.literal_eval(raw_info)  
             except Exception as e:
                 print(f"[{self.name}] Failed to parse info: {e}")
                 self.info = {}
@@ -67,36 +61,36 @@ class Recorder:
         send_tcp(b'', sock)
         print(f"[{self.name}] Connected. Waiting for data...")
         print(f"[{self.name}] Starting the recording")
-        while not self.event_socket._stop.is_set():
+        while not self.event_socket._stopEvent.is_set():
             try:
                 ts, data = recv_tcp(sock)
-                # matrix_bytes = pickle.loads(data)
                 for row in data:    self.file.write(' '.join(map(str, row)) + '\n')
-                # Write n-1 empty lines to the timestamps file
                 self.fileTimestamp.write(f"{ts}\n")
                 for _ in range(data.shape[0] - 1):  self.fileTimestamp.write("-\n")
 
             except Exception as e:
-                print(f"[{self.name}] Error or disconnected:", e)
+                if not self.event_socket._stopEvent.is_set():   print(f"[{self.name}] Error or disconnected:", e)
                 break
         sock.close()
         
 
     def close(self):
-        self.event_socket._stop.set()
-        self.close_all()
+        try:
+            self.event_socket.close()
+            if self.event_socket.is_alive(): self.event_socket.join(timeout=0.5)
+        except Exception as e:
+            print(f"[{self.name}] InfoDict socket close error: {e}")
+
+        self.file.close()
+        self.fileTimestamp.close()
+        self.fileEvents.close()
+
         self.saveData()
-        del self.file
         print(f"[{self.name}] Recorder closed.")
 
     def save_event(self, ts, eventCode):
         self.fileEvents.write(f"{ts} {eventCode}\n")
-
-    def close_all(self):
-        self.event_socket.close()
-        self.file.close()
-        self.fileTimestamp.close()
-        self.fileEvents.close()
+        
 
     def saveData(self):
         self.join_Txts()
@@ -154,7 +148,7 @@ class Recorder:
         return correct
 
     def __del__(self):
-        if hasattr(self, 'file'):   self.file.close()
+        if not self.event_socket._stopEvent.is_set():   self.file.close()
 
 
 
