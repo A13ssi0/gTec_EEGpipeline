@@ -1,5 +1,5 @@
-import socket, ast, threading
-from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, emergency_kill
+import socket, ast
+from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, safeClose_socket, get_serversPort
   
 
 HOST = '127.0.0.1'
@@ -13,18 +13,12 @@ class Filter:
         neededPorts = ['InfoDictionary', 'EEGData', 'FilteredData']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
 
-        threading.Thread(target=emergency_kill, daemon=True).start()
+        # threading.Thread(target=emergency_kill, daemon=True).start()
 
 
     def init_sockets(self, managerPort, neededPorts):
-        portDict = {port: None for port in neededPorts}
-        wait_for_udp_server(self.host, managerPort)
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            for port_name in portDict.keys():
-                send_udp(udp_sock, (self.host, managerPort), f"GET_PORT/{port_name}")
-                _, port_info, _ = recv_udp(udp_sock)
-                portDict[port_name] = int(port_info)
-        
+        portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
+
         self.EEGPort = portDict['EEGData']
         self.InfoDictPort = portDict['InfoDictionary']
         self.Filtered_socket = TCPServer(host=self.host, port=portDict['FilteredData'], serverName=self.name, node=self)
@@ -58,7 +52,7 @@ class Filter:
                 
                     try:    self.Filtered_socket.broadcast(matrix)
                     except Exception as e:
-                        print(f"[{self.name}] Broadcast error: {e}")
+                        if not self.Filtered_socket._stopEvent.is_set(): print(f"[{self.name}] Broadcast error: {e}")
                         self.Filtered_socket._stopEvent.set()
 
                 except Exception as e:
@@ -71,11 +65,8 @@ class Filter:
         
 
     def close(self):
-        try:
-            self.Filtered_socket.close()
-            if self.Filtered_socket.is_alive(): self.Filtered_socket.join(timeout=0.5)
-        except Exception as e:
-            print(f"[{self.name}] Socket close error: {e}")
+        safeClose_socket(self.Filtered_socket, name=self.name)
+
 
     def __del__(self):
         if not self.Filtered_socket._stopEvent.is_set():     self.close()

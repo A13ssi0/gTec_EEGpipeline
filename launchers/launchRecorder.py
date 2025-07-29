@@ -16,10 +16,16 @@ recFolder = sys.argv[3] if len(sys.argv) > 3 else 'C:/Users/aless/Desktop/gNauti
 runType = sys.argv[4] if len(sys.argv) > 4 else 'test'  # Default run type if not provided
 task = sys.argv[5] if len(sys.argv) > 5 else 'mi_bfbh'  # Default task if not provided
 
+
+stop_event = threading.Event()
+def on_hotkey():    stop_event.set()
+keyboard.add_hotkey('F5', on_hotkey)
+keyboard.add_hotkey('F12', on_hotkey)
+
 nrec = Recorder(managerPort=managerPort, subjectCode=subjectCode, recFolder=recFolder, runType=runType, task=task)
 thread = threading.Thread(target=nrec.run)
 thread.start()
 
-keyboard.wait('F5')
+stop_event.wait()
 nrec.close()
 thread.join()

@@ -11,10 +11,18 @@ import keyboard, threading
 
 managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
 
+
+
+stop_event = threading.Event()
+def on_hotkey():    stop_event.set()
+keyboard.add_hotkey('F3', on_hotkey)
+keyboard.add_hotkey('F12', on_hotkey)
+
+
 nf = Filter(managerPort=managerPort)
 thread = threading.Thread(target=nf.run)
 thread.start()
 
-keyboard.wait('F3')
+stop_event.wait()
 nf.close()
 thread.join()

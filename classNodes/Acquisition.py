@@ -1,6 +1,6 @@
 import numpy as np
-import pygds, time, threading, socket, UnicornPy
-from utils.server import wait_for_udp_server, send_udp, recv_udp, UDPServer, TCPServer, emergency_kill
+import pygds, time, UnicornPy
+from utils.server import  UDPServer, TCPServer, safeClose_socket, get_serversPort
 from scipy.io import loadmat
 from py_utils.data_managment import fix_mat
 
@@ -16,18 +16,11 @@ class Acquisition:
         neededPorts = ['InfoDictionary', 'EEGData']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
 
-        threading.Thread(target=emergency_kill, daemon=True).start()
-
+        # threading.Thread(target=emergency_kill, daemon=True).start()
 
 
     def init_sockets(self, managerPort, neededPorts):
-        portDict = {port: None for port in neededPorts}
-        wait_for_udp_server(self.host, managerPort)
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            for port_name in portDict.keys():
-                send_udp(udp_sock, (self.host, managerPort), f"GET_PORT/{port_name}")
-                _, port_info, _ = recv_udp(udp_sock)
-                portDict[port_name] = int(port_info)
+        portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
             
         self.InfoDict_socket = UDPServer(host=self.host, port=portDict['InfoDictionary'], serverName='InfoDictionary', node=self)
         self.EEG_socket = TCPServer(host=self.host, port=portDict['EEGData'], serverName=self.name, node=self)
@@ -140,7 +133,7 @@ class Acquisition:
         self.nSamples += data.shape[0]
         try:    self.EEG_socket.broadcast(data)
         except Exception as e:
-            print(f"[{self.name}] Broadcast error: {e}")
+            if not self.Filtered_socket._stopEvent.is_set(): print(f"[{self.name}] Broadcast error: {e}")
             self.EEG_socket._stopEvent.set()
             return False
         return True
@@ -152,16 +145,8 @@ class Acquisition:
             self.unicorn.StopAcquisition()
             del self.unicorn
 
-        try:
-            self.InfoDict_socket.close()
-            if self.InfoDict_socket.is_alive(): self.InfoDict_socket.join(timeout=0.5)
-        except Exception as e:
-            print(f"[{self.name}] InfoDict socket close error: {e}")
-        try:
-            self.EEG_socket.close()
-            if self.EEG_socket.is_alive():  self.EEG_socket.join(timeout=0.5)
-        except Exception as e:
-            print(f"[{self.name}] EEG socket close error: {e}")
+        safeClose_socket(self.InfoDict_socket, name=self.name)
+        safeClose_socket(self.EEG_socket, name=self.name)
         
         print(f"[{self.name}] Finished streaming {self.nSamples} samples.")
    

@@ -7,23 +7,26 @@ if parent_dir not in sys.path:
 # ---------------------------------------------------------------------------------------------
 
 
-from classNodes.Classifier import Classifier
+from classNodes.OutputMapper import OutputMapper
 import threading, keyboard
 
-modelPath = sys.argv[1]
-managerPort = int(sys.argv[2]) 
-laplacianPath = sys.argv[3] if len(sys.argv) > 3 else None
-if modelPath.endswith('test'): modelPath = 'test'
+managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
+weights = sys.argv[2].split(',') if len(sys.argv) > 2 else ['1']
+weights = [float(w) for w in weights]
+alpha = float(sys.argv[3]) if len(sys.argv) > 3 else 0.96
+
 
 stop_event = threading.Event()
 def on_hotkey():    stop_event.set()
-keyboard.add_hotkey('F6', on_hotkey)
+keyboard.add_hotkey('F7', on_hotkey)
 keyboard.add_hotkey('F12', on_hotkey)
 
-ncls = Classifier(modelPath=modelPath, managerPort=managerPort, laplacianPath=laplacianPath)
-thread = threading.Thread(target=ncls.run)
+
+noutm = OutputMapper(managerPort=managerPort, weights=weights, alpha=alpha)
+thread = threading.Thread(target=noutm.run)
 thread.start()
 
 stop_event.wait()
-ncls.close()
+noutm.close()
 thread.join()
+

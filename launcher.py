@@ -27,6 +27,9 @@ device = 'test'  # Default device for testing
 model = 'test'  # Default model for testing
 lenWindowVisualizer = '10' 
 
+alpha = 0.99
+weights = '1'
+
 # ---------------------------------------------------------------------------------------------
 
 portDict = {}   
@@ -43,7 +46,9 @@ portDict['PercPosX'] = free_ports[5]
 subprocess.Popen([sys.executable, "launchers\launchPortManager.py", portManagerPort, json.dumps(portDict)]) # F1
 subprocess.Popen([sys.executable, "launchers\launchAcquisition.py", device, portManagerPort])  # F2
 subprocess.Popen([sys.executable, "launchers\launchFilter.py", portManagerPort])  # F3
-subprocess.Popen([sys.executable, "launchers\launchVisualizer.py", portManagerPort, lenWindowVisualizer]) # F4
+# subprocess.Popen([sys.executable, "launchers\launchVisualizer.py", portManagerPort, lenWindowVisualizer]) # F4
 subprocess.Popen([sys.executable, "launchers\launchRecorder.py", portManagerPort, subjectCode, recFolder, runType, task]) # F5
 subprocess.Popen([sys.executable, "launchers\launchClassifier.py", f'{modelFolder}{model}', portManagerPort, laplacianPath]) # F6
+subprocess.Popen([sys.executable, "launchers\launchOutputMapper.py", portManagerPort, weights, str(alpha)]) # F7
+
 

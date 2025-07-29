@@ -16,10 +16,15 @@ else:                                                   device = sys.argv[1]
 managerPort = int(sys.argv[2]) if len(sys.argv) > 2 else 25798
 
 
+stop_event = threading.Event()
+def on_hotkey():    stop_event.set()
+keyboard.add_hotkey('F1', on_hotkey)
+keyboard.add_hotkey('F12', on_hotkey)
+
 na = Acquisition(device=device, managerPort=managerPort)
 thread = threading.Thread(target=na.run)
 thread.start()
 
-keyboard.wait('F2')
+stop_event.wait()
 na.close()
 thread.join()

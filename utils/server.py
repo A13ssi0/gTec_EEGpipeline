@@ -10,14 +10,14 @@ from py_utils.signal_processing import RealTimeButterFilter
 from datetime import datetime
 
 
-SERVERS_LIST = []
+# SERVERS_LIST = []
 
-def emergency_kill():
-    keyboard.wait('F12')
-    print("[EMERGENCY] F12 pressed — shutting down all servers")
-    for server in SERVERS_LIST:
-        try:    server.close()
-        except Exception as e:   print(f"[EMERGENCY] Error shutting down {server}: {e}")
+# def emergency_kill():
+#     keyboard.wait('F12')
+#     print("[EMERGENCY] F12 pressed — shutting down all servers")
+#     for server in SERVERS_LIST:
+#         try:    server.close()
+#         except Exception as e:   print(f"[EMERGENCY] Error shutting down {server}: {e}")
 
 # ----------------------------
 # UDP Server
@@ -35,7 +35,7 @@ class UDPServer(threading.Thread):
         self.sock.bind((self.host, self.port))
         self._stopEvent = threading.Event()
         self.sock.settimeout(0.5)
-        SERVERS_LIST.append(self)
+        # SERVERS_LIST.append(self)
 
 
     def run(self):
@@ -46,7 +46,8 @@ class UDPServer(threading.Thread):
 
                     if      msg == 'PING':     send_udp(self.sock, addr, 'PONG')
                     elif    msg == 'GET_INFO': send_udp(self.sock, addr, str(self.node.info))
-                    elif    'PORT' in msg:    self.manage_ports(msg, addr)
+                    elif    'PORT' in msg:     self.manage_ports(msg, addr)
+                    elif    msg == 'GET_PERCPOSX': send_udp(self.sock, addr, str(self.node.percPosX))
                     else:   print(f"[{self.serverName}] Unknown message from {addr}: {msg}")
                 except socket.timeout:  continue
                 except Exception as e:
@@ -75,30 +76,6 @@ class UDPServer(threading.Thread):
 # ----------------------------
 # TCP Server
 # ----------------------------
-# class TCPProbabilitiesClientHandler(threading.Thread):
-#     def __init__(self, conn, addr, server, index):
-#         super().__init__(daemon=True)
-#         self.conn = conn
-#         self.addr = addr
-#         self.server = server
-#         self.index = index
- 
-#     def run(self):
-#         try:
-#             while not self.server._stopEvent.is_set():
-#                 ts, msg = recv_tcp(self.conn)
-#                 # msg = matrix.decode('utf-8', errors='ignore') if isinstance(matrix, bytes) else ""
-#                 if msg.startswith('ev'): self.node.save_event(ts, msg[2:])  # Save event with timestamp
-#         except socket.timeout:
-#             pass
-#         except Exception as e:
-#             print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
-#         finally:
-#             try:    self.server.remove_client(self.conn)
-#             except: pass
-#             self.conn.close()
-
-
 class TCPServer(threading.Thread):
     def __init__(self, host='127.0.0.1', port=6000, serverName='TCP', node=None):
         super().__init__(daemon=True)
@@ -111,11 +88,10 @@ class TCPServer(threading.Thread):
         self.sock.bind((self.host, self.port))
         self.sock.listen()
         self.clients = []
-        self.probabilities = []
         self.clients_lock = threading.Lock()
         self._stopEvent = threading.Event()
         self.sock.settimeout(0.5)
-        SERVERS_LIST.append(self)
+        # SERVERS_LIST.append(self)
 
 
     def run(self):
@@ -128,6 +104,7 @@ class TCPServer(threading.Thread):
                     with self.clients_lock: self.clients.append(conn)
                     print(f"[+][{self.serverName}] Client connected: {addr}")
                     self.choose_handler(conn, addr)
+
                 except socket.timeout:  continue
                 except Exception as e:
                     if self._stopEvent.is_set(): print(f"[{self.serverName}] Accept error: {e}")
@@ -139,20 +116,13 @@ class TCPServer(threading.Thread):
     def choose_handler(self, conn, addr):
         try:
             conn.settimeout(10)
-            _, msg = recv_tcp(conn)
+            _, _ = recv_tcp(conn)
             conn.settimeout(None)
-            if msg == "FILTERS":    TCPFilterClientHandler(conn, addr, self).start()  
-            else:                   TCPClientHandler(conn, addr, self).start() 
+            TCPClientHandler(conn, addr, self).start()  
         except Exception as e:
             print(f"[{self.serverName}] Handler selection error: {e}")
             try: conn.close()
             except: pass
-               
-            # elif msg == "PROBABILITIES":
-            #     self.probabilities.append([])
-            #     handler = TCPProbabilitiesClientHandler(conn, addr, self, len(self.probabilities) - 1)
-            #     handler.start()
-            #     return
 
     def remove_client(self, conn):
         with self.clients_lock:
@@ -196,7 +166,7 @@ class TCPServer(threading.Thread):
 
 
 class TCPClientHandler(threading.Thread):
-    def __init__(self, conn, addr, server):
+    def __init__(self, conn, addr, server,):
         super().__init__(daemon=True)
         self.conn = conn
         self.addr = addr
@@ -207,8 +177,9 @@ class TCPClientHandler(threading.Thread):
         try:
             while not self._stopEvent.is_set():
                 ts, msg = recv_tcp(self.conn)
-                if msg.startswith('ev'): self.node.save_event(ts, msg[2:])
-                elif 'FILTERS' in msg:    self.manage_ports(msg)
+                if msg.startswith('EV'): self.server.node.save_event(ts, msg[2:])
+                elif 'FILTERS' in msg:    self.manage_filters(msg)
+                elif msg.startswith('PROB'): self.manage_probabilities(ts,msg)
 
         except Exception as e:
             if not self._stopEvent.is_set():    print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
@@ -216,6 +187,14 @@ class TCPClientHandler(threading.Thread):
             try:    self.server.remove_client(self.conn)
             except: pass
             self.safe_close()
+
+    def safe_close(self):
+        try:    self.conn.shutdown(socket.SHUT_RDWR)
+        except Exception:   pass
+        try:    self.conn.close()
+        except Exception:   pass
+
+
 
     def manage_filters(self, msg):
         if msg.startswith('FILTERS'):               self.handle_filter_command(msg)
@@ -251,33 +230,28 @@ class TCPClientHandler(threading.Thread):
             print(f"[{self.server.serverName}] Filter parse error: {e}")
 
 
-    def safe_close(self):
-        try:    self.conn.shutdown(socket.SHUT_RDWR)
-        except Exception:   pass
-        try:    self.conn.close()
-        except Exception:   pass
+
+    def manage_probabilities(self, ts, msg):
+        prob = {'isNew': True, 'ts': ts, 'values': []}
+        for part in msg.split('/')[1:]:     prob['values'].append(float(part))
+
+        if not hasattr(self, 'probId'):     
+            self.probId = len(self.server.node.probabilities)
+            self.server.node.probabilities.append(prob)
+        else:
+            self.server.node.probabilities[self.probId] = prob
+
+        if all(proba['isNew'] for proba in self.server.node.probabilities):
+            self.server.node.new_data_event.set()
 
 
-class TCPFilterClientHandler(threading.Thread):
-    def __init__(self, conn, addr, server):
-        super().__init__(daemon=True)
-        self.conn = conn
-        self.addr = addr
-        self.server = server
-        self._stopEvent = server._stopEvent
 
 
-    def run(self):
-        try:
-            while not self._stopEvent.is_set():
-                _, msg = recv_tcp(self.conn)
-                
-        except Exception as e:
-            if not self._stopEvent.is_set():    print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
-        finally:
-            try:    self.server.remove_client(self.conn)
-            except: pass
-            self.conn.close()
+        
+
+
+
+
 
     
 
@@ -347,7 +321,7 @@ def recv_udp(sock, num_bytes=4096):
 
 
 def send_udp(sock, addr, message):
-    if isinstance(message, int):    message = str(message)
+    if not isinstance(message, str) and not isinstance(message, bytes):    message = str(message)
     if isinstance(message, str):    message = message.encode('utf-8')
     ts_len, ts_bytes = get_timestamp_bytes()
     msg_len = len(message).to_bytes(4, 'big')
@@ -420,3 +394,21 @@ def get_timestamp_bytes():
     ts = datetime.now().strftime("%H:%M:%S.%f")
     ts_bytes = ts.encode('utf-8')
     return len(ts_bytes).to_bytes(4, 'big'), ts_bytes
+
+
+def safeClose_socket(sock, name='Socket', timeout=0.5):
+    try:
+        sock.close()
+        if sock.is_alive(): sock.join(timeout=timeout)
+    except Exception as e:
+        print(f"[{name}] InfoDict socket close error: {e}")
+
+def get_serversPort(host, managerPort, neededPorts):
+    portDict = {port: None for port in neededPorts}
+    wait_for_udp_server(host, managerPort)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
+        for port_name in portDict.keys():
+            send_udp(udp_sock, (host, managerPort), f"GET_PORT/{port_name}")
+            _, port_info, _ = recv_udp(udp_sock)
+            portDict[port_name] = int(port_info)
+    return portDict

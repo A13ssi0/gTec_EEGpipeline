@@ -1,7 +1,7 @@
-import socket, os, threading, ast
+import socket, os, ast
 import numpy as np
 from scipy.io import savemat
-from utils.server import recv_tcp, recv_udp, wait_for_udp_server, send_udp, send_tcp, TCPServer, wait_for_tcp_server, emergency_kill
+from utils.server import recv_tcp, recv_udp, wait_for_udp_server, send_udp, send_tcp, TCPServer, wait_for_tcp_server, safeClose_socket, get_serversPort
 from datetime import datetime, timedelta    
 
 HOST = '127.0.0.1'
@@ -27,18 +27,12 @@ class Recorder:
         neededPorts = ['InfoDictionary', 'EEGData', 'EventBus']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
 
-        threading.Thread(target=emergency_kill, daemon=True).start()
+        # threading.Thread(target=emergency_kill, daemon=True).start()
 
 
 
     def init_sockets(self, managerPort, neededPorts):
-        portDict = {port: None for port in neededPorts}
-        wait_for_udp_server(self.host, managerPort)
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            for port_name in portDict.keys():
-                send_udp(udp_sock, (self.host, managerPort), f"GET_PORT/{port_name}")
-                _, port_info, _ = recv_udp(udp_sock)
-                portDict[port_name] = int(port_info)
+        portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
             
         self.InfoDictPort = portDict['InfoDictionary']
         self.EEGPort = portDict['EEGData']
@@ -61,26 +55,20 @@ class Recorder:
         send_tcp(b'', sock)
         print(f"[{self.name}] Connected. Waiting for data...")
         print(f"[{self.name}] Starting the recording")
-        while not self.event_socket._stopEvent.is_set():
-            try:
+        try:
+            while not self.event_socket._stopEvent.is_set():
                 ts, data = recv_tcp(sock)
                 for row in data:    self.file.write(' '.join(map(str, row)) + '\n')
                 self.fileTimestamp.write(f"{ts}\n")
                 for _ in range(data.shape[0] - 1):  self.fileTimestamp.write("-\n")
-
-            except Exception as e:
-                if not self.event_socket._stopEvent.is_set():   print(f"[{self.name}] Error or disconnected:", e)
-                break
-        sock.close()
+        except Exception as e:
+            if not self.event_socket._stopEvent.is_set():   print(f"[{self.name}] Error or disconnected:", e)
+        finally:
+            sock.close()
         
 
     def close(self):
-        try:
-            self.event_socket.close()
-            if self.event_socket.is_alive(): self.event_socket.join(timeout=0.5)
-        except Exception as e:
-            print(f"[{self.name}] InfoDict socket close error: {e}")
-
+        safeClose_socket(self.event_socket, name=self.name)
         self.file.close()
         self.fileTimestamp.close()
         self.fileEvents.close()

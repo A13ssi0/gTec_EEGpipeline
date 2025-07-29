@@ -2,7 +2,7 @@ import numpy as np
 import pyqtgraph as pg
 import socket, ast, threading
 from utils.buffer import BufferVisualizer
-from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp
+from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, get_serversPort
 
 HOST = '127.0.0.1'
 
@@ -21,13 +21,7 @@ class Visualizer:
 
 
     def init_sockets(self, managerPort, neededPorts):
-        portDict = {port: None for port in neededPorts}
-        wait_for_udp_server(self.host, managerPort)
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            for port_name in portDict.keys():
-                send_udp(udp_sock, (self.host, managerPort), f"GET_PORT/{port_name}")
-                _, port_info, _ = recv_udp(udp_sock)
-                portDict[port_name] = int(port_info)
+        portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
 
         self.FilteredPort = portDict['FilteredData']
         self.InfoDictPort = portDict['InfoDictionary']

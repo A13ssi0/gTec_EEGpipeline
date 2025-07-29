@@ -13,11 +13,17 @@ import json, threading, keyboard
 managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
 portDict = json.loads(sys.argv[2]) if len(sys.argv) > 2 else None
 
+
+stop_event = threading.Event()
+def on_hotkey():    stop_event.set()
+keyboard.add_hotkey('F1', on_hotkey)
+keyboard.add_hotkey('F12', on_hotkey)
+
 npm = PortManager(managerPort=managerPort)
 if portDict:    npm.set_dictPorts(portDict)
 thread = threading.Thread(target=npm.run)
 thread.start()
 
-keyboard.wait('F1')
+stop_event.wait()
 npm.close()
 thread.join()

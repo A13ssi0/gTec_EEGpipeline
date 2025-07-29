@@ -4,7 +4,7 @@ import utils as utils
 from scipy.io import loadmat
 from pyriemann.utils.test import is_sym_pos_def
 from utils.buffer import Buffer
-from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp
+from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, get_serversPort
 from py_utils.data_managment import load
 from py_utils.eeg_managment import get_channelsMask
 from py_utils.signal_processing import get_covariance_matrix_traceNorm_online
@@ -26,21 +26,17 @@ class Classifier:
         self.classifier = self.classifier_dict['fgmdm'] if modelPath!='test' else None
         self.laplacian = loadmat(laplacianPath)['lapMask'] if laplacianPath and modelPath!='test' else None
 
-        neededPorts = ['FilteredData', 'InfoDictionary']
+        neededPorts = ['FilteredData', 'InfoDictionary', 'OutputMapper']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
       
 
     def init_sockets(self, managerPort, neededPorts):
-        portDict = {port: None for port in neededPorts}
-        wait_for_udp_server(self.host, managerPort)
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            for port_name in portDict.keys():
-                send_udp(udp_sock, (self.host, managerPort), f"GET_PORT/{port_name}")
-                _, port_info, _ = recv_udp(udp_sock)
-                portDict[port_name] = int(port_info)
+        portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
 
         self.FilteredPort = portDict['FilteredData']
         self.InfoDictPort = portDict['InfoDictionary']
+        self.MapperPort = portDict['OutputMapper']
+
             
             
     def run(self):
@@ -56,29 +52,36 @@ class Classifier:
 
         print(f"[{self.name}] Received info dictionary")
 
+        self.filtSock = wait_for_tcp_server(self.host, self.FilteredPort)
+        send_tcp(b'FILTERS', self.filtSock)
+        print(f"[{self.name}] Connected to data source.")
+
+
+        self.probSock = wait_for_tcp_server(self.host, self.MapperPort)
+        send_tcp(b'', self.probSock)
+        print(f"[{self.name}] Connected to output mapper. Starting classifier loop...")
+
         if self.classifier is None: self.start_fake_classifier()
         else:                       self.start_classifier()
         
 
     def start_fake_classifier(self):
-        tcp_sock = wait_for_tcp_server(self.host, self.FilteredPort)
-        send_tcp(b'FILTERS', tcp_sock)
-        print(f"[{self.name}] Connected to data source. Starting classifier loop...")
         value = 0.5
         step = 0.02     # at 25 Hz, this gives a 0.5 movement in 1 second
 
         while not self._stopEvent.is_set():
             try:
-                _, _ = recv_tcp(tcp_sock)
+                _, _ = recv_tcp(self.filtSock)
                 prob = np.array([value, 1-value])  # Simulated probabilities
+                send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
 
                 if keyboard.is_pressed('left'):         value += step
                 elif keyboard.is_pressed('right'):      value -= step
+                else: value= 0.5  
+                value = np.clip(value, 0, 1) 
             except Exception as e:
                 if not not self._stopEvent.is_set():   print(f"[{self.name}] Data processing error: {e}")
                 break
-
-
 
 
     def start_classifier(self):
@@ -86,58 +89,57 @@ class Classifier:
         if self.info['dataChunkSize']!=self.classifier_dict['windowsShift']*self.classifier_dict['fs']:    
             Warning(f"[{self.name}] WindowShift mismatch: {self.info['dataChunkSize']} != {self.classifier_dict['windowsShift']*self.classifier_dict['fs']}")
         channelMask = get_channelsMask(self.classifier_dict['channels'], self.info['channels'])
-        try:
-            tcp_sock = wait_for_tcp_server(self.host, self.FilteredPort)
-            send_tcp(b'FILTERS', tcp_sock)
+      
+        message = 'FILTERS'
+        if self.classifier_dict['bandPass']:
+            hp = self.classifier_dict['bandPass'][0]
+            lp = self.classifier_dict['bandPass'][1]
+            cutHp = f'/hp{hp}' 
+            cutLp = f'/lp{lp}' 
+            send_tcp(f'{message}{cutHp}{cutLp}'.encode('utf-8'), self.filtSock)
+            message = 'APPEND_FILTERS'
+        if self.classifier_dict['stopBand']:
+            hp = self.classifier_dict['stopBand'][0]
+            lp = self.classifier_dict['stopBand'][1]
+            cutHp = f'/hp{hp}' 
+            cutLp = f'/lp{lp}' 
+            send_tcp(f'{message}{cutHp}{cutLp}/bstop'.encode('utf-8'), self.filtSock)
 
-            message = 'FILTERS'
-            if self.classifier_dict['bandPass']:
-                hp = self.classifier_dict['bandPass'][0]
-                lp = self.classifier_dict['bandPass'][1]
-                cutHp = f'/hp{hp}' 
-                cutLp = f'/lp{lp}' 
-                send_tcp(f'{message}{cutHp}{cutLp}'.encode('utf-8'), tcp_sock)
-                message = 'APPEND_FILTERS'
-            if self.classifier_dict['stopBand']:
-                hp = self.classifier_dict['stopBand'][0]
-                lp = self.classifier_dict['stopBand'][1]
-                cutHp = f'/hp{hp}' 
-                cutLp = f'/lp{lp}' 
-                send_tcp(f'{message}{cutHp}{cutLp}/bstop'.encode('utf-8'), tcp_sock)
+        while not self.buffer.isFull:
+            _, matrix = recv_tcp(self.filtSock)
+            if self.laplacian is not None:  matrix = matrix @ self.laplacian
+            self.buffer.add_data(matrix[:, channelMask])
 
-            print(f"[{self.name}] Connected to data source. Starting classifier loop...")
+        while not self._stopEvent.is_set():
+            try:
+                cov = get_covariance_matrix_traceNorm_online(self.buffer.data)
 
-            while not self.buffer.isFull:
-                _, matrix = recv_tcp(tcp_sock)
+                if self.classifier_dict['inv_sqrt_mean_cov'] is not None:
+                    cov = center_covariance_online(cov, self.classifier_dict['inv_sqrt_mean_cov'])
+
+                if not (is_sym_pos_def(cov)): print(f"[!!!][{self.name}] Covariance matrix is not SPD")
+
+                prob = self.classifier.predict_probabilities(cov)
+                send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
+
+
+                _, matrix = recv_tcp(self.filtSock)
                 if self.laplacian is not None:  matrix = matrix @ self.laplacian
                 self.buffer.add_data(matrix[:, channelMask])
 
-            while not self._stopEvent.is_set():
-                try:
-                    cov = get_covariance_matrix_traceNorm_online(self.buffer.data)
 
-                    if self.classifier_dict['inv_sqrt_mean_cov'] is not None:
-                        cov = center_covariance_online(cov, self.classifier_dict['inv_sqrt_mean_cov'])
+            except Exception as e:
+                print(f"[{self.name}] Data processing error: {e}")
+                break
 
-                    if not (is_sym_pos_def(cov)): print(f"[!!!][{self.name}] Covariance matrix is not SPD")
-
-                    prob = self.classifier.predict_probabilities(cov)
-
-                    _, matrix = recv_tcp(tcp_sock)
-                    if self.laplacian is not None:  matrix = matrix @ self.laplacian
-                    self.buffer.add_data(matrix[:, channelMask])
-
-
-                except Exception as e:
-                    print(f"[{self.name}] Data processing error: {e}")
-                    break
-        finally:
-            tcp_sock.close()
 
 
     def close(self):
         self._stopEvent.set()
+        self.filtSock.close()
+        self.probSock.close()
         print(f"[{self.name}] Finished.")
+
 
     def __del__(self):
         if not self._stopEvent.is_set():   self.close()
