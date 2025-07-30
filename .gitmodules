@@ -1,9 +1,9 @@
 [submodule "riemann_utils"]
 	path = riemann_utils
-	url = ../A13ssi0/riemann_utils.git
+	url = ../riemann_utils.git
 [submodule "py_utils"]
 	path = py_utils
-	url = ../A13ssi0/py_utils.git
+	url = ../py_utils.git
 [submodule "fgmdm_riemann"]
 	path = fgmdm_riemann
-	url = ../A13ssi0/fgmdm_riemann.git
+	url = ../fgmdm_riemann.git
