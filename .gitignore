@@ -1,4 +1,4 @@
-*.txt
+# *.txt
 *.mat
 *.ipynb
 *.m
