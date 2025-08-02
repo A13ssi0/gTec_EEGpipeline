@@ -4,20 +4,10 @@ parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-import socket, threading, time, io, keyboard
+import socket, threading, time, io, keyboard, ast
 import numpy as np
 from py_utils.signal_processing import RealTimeButterFilter
 from datetime import datetime
-
-
-# SERVERS_LIST = []
-
-# def emergency_kill():
-#     keyboard.wait('F12')
-#     print("[EMERGENCY] F12 pressed — shutting down all servers")
-#     for server in SERVERS_LIST:
-#         try:    server.close()
-#         except Exception as e:   print(f"[EMERGENCY] Error shutting down {server}: {e}")
 
 # ----------------------------
 # UDP Server
@@ -35,20 +25,24 @@ class UDPServer(threading.Thread):
         self.sock.bind((self.host, self.port))
         self._stopEvent = threading.Event()
         self.sock.settimeout(0.5)
-        # SERVERS_LIST.append(self)
-
+        self.clientList = []
 
     def run(self):
         try:
             while not self._stopEvent.is_set():
                 try:
                     _, msg, addr = recv_udp(self.sock)
+                    print(f"[{self.serverName}] Received message from {addr}: {msg}")
 
-                    if      msg == 'PING':     send_udp(self.sock, addr, 'PONG')
-                    elif    msg == 'GET_INFO': send_udp(self.sock, addr, str(self.node.info))
-                    elif    'PORT' in msg:     self.manage_ports(msg, addr)
-                    elif    msg == 'GET_PERCPOSX': send_udp(self.sock, addr, str(self.node.percPosX))
+                    if      msg == 'PING':              send_udp(self.sock, addr, 'PONG')
+                    elif    msg == 'IS_MAIN':           send_udp(self.sock, addr, str(self.node.isMain))
+                    elif    msg == 'IS_MULTIPLE_PC':    send_udp(self.sock, addr, str(self.node.useMultiplePc))
+                    elif    'INFO' in msg:              self.manage_info(msg, addr)
+                    elif    'PORT' in msg:              self.manage_ports(msg, addr)
+                    elif    msg == 'GET_PERCPOSX':      send_udp(self.sock, addr, str(self.node.percPosX))
+                    elif    msg == 'ADD_ME':            self.clientList.append(addr)
                     else:   print(f"[{self.serverName}] Unknown message from {addr}: {msg}")
+
                 except socket.timeout:  continue
                 except Exception as e:
                     if self._stopEvent.is_set(): break
@@ -56,6 +50,28 @@ class UDPServer(threading.Thread):
         finally:
             self.sock.close()
             print(f"[{self.serverName}] Closed.")
+
+    def broadcast(self, message):
+        for client in self.clientList:
+            print(f"[{self.serverName}] Broadcasting to {client}: {message}")
+            try:    send_udp(self.sock, client, message)
+            except Exception as e:
+                print(f"[{self.serverName}] Broadcast error to {client}: {e}")
+                self.clientList.remove(client)
+
+    def manage_info(self, msg, addr):
+        if msg == 'GET_INFO':   send_udp(self.sock, addr, str(self.node.info))
+        elif msg == 'ADD_INFO':
+            try:
+                info = ast.literal_eval(msg.split('/')[1])
+                for key, value in info.items():
+                    if key not in self.node.info:   self.node.info[key] = value
+                    elif self.node.info[key] != value:
+                        print(f"[{self.serverName}] Updating info: {key} = {value}")
+                        self.node.info[key] = value
+            except Exception as e:
+                print(f"[{self.serverName}] Error updating info: {e}")
+           
 
     def manage_ports(self, msg, addr):
         port_name = msg.split('/')[1]
@@ -117,6 +133,7 @@ class TCPServer(threading.Thread):
         try:
             conn.settimeout(10)
             _, _ = recv_tcp(conn)
+            # print(f"[{self.serverName}] Received message from {addr}: {msg}")
             conn.settimeout(None)
             TCPClientHandler(conn, addr, self).start()  
         except Exception as e:
@@ -410,5 +427,21 @@ def get_serversPort(host, managerPort, neededPorts):
         for port_name in portDict.keys():
             send_udp(udp_sock, (host, managerPort), f"GET_PORT/{port_name}")
             _, port_info, _ = recv_udp(udp_sock)
-            portDict[port_name] = int(port_info)
+            if port_info is None: continue
+            elif '.' not in port_info:  port_info = int(port_info) 
+            portDict[port_name] = port_info
     return portDict
+
+def get_isMultiplePC(host, managerPort):
+    wait_for_udp_server(host, managerPort)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
+        send_udp(udp_sock, (host, managerPort), f"IS_MULTIPLE_PC")
+        _, port_info, _ = recv_udp(udp_sock)
+    return port_info.lower() == 'true' if port_info is not None else None
+
+def get_isMain(host, managerPort):
+    wait_for_udp_server(host, managerPort)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
+        send_udp(udp_sock, (host, managerPort), f"IS_MAIN")
+        _, port_info, _ = recv_udp(udp_sock)
+    return port_info.lower() == 'true' if port_info is not None else None

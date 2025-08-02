@@ -11,7 +11,7 @@ from classNodes.OutputMapper import OutputMapper
 import threading, keyboard
 
 managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
-weights = sys.argv[2].split(',') if len(sys.argv) > 2 else ['1']
+weights = sys.argv[2][1:-1].split(',') if len(sys.argv) > 2 else ['1']
 weights = [float(w) for w in weights]
 alpha = float(sys.argv[3]) if len(sys.argv) > 3 else 0.96
 

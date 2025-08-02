@@ -13,14 +13,14 @@ class Acquisition:
         self.host = host
         self.info = {}
 
-        neededPorts = ['InfoDictionary', 'EEGData']
+        neededPorts = ['InfoDictionary', 'EEGData', 'host']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
 
-        # threading.Thread(target=emergency_kill, daemon=True).start()
-
+    
 
     def init_sockets(self, managerPort, neededPorts):
         portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
+        if portDict['host'] is not None:    self.host = portDict['host']
             
         self.InfoDict_socket = UDPServer(host=self.host, port=portDict['InfoDictionary'], serverName='InfoDictionary', node=self)
         self.EEG_socket = TCPServer(host=self.host, port=portDict['EEGData'], serverName=self.name, node=self)

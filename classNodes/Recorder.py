@@ -1,13 +1,12 @@
 import socket, os, ast
 import numpy as np
 from scipy.io import savemat
-from utils.server import recv_tcp, recv_udp, wait_for_udp_server, send_udp, send_tcp, TCPServer, wait_for_tcp_server, safeClose_socket, get_serversPort
+from utils.server import recv_tcp, recv_udp, wait_for_udp_server, send_udp, send_tcp, TCPServer, wait_for_tcp_server, safeClose_socket, get_serversPort, get_isMultiplePC, get_isMain
 from datetime import datetime, timedelta    
 
-HOST = '127.0.0.1'
 
 class Recorder:
-    def __init__(self, managerPort=25798, subjectCode='noName', recFolder='', runType= '', task=''):
+    def __init__(self, managerPort=25798, subjectCode='noName', recFolder='', runType= '', task='', host='127.0.0.1'):
         self.filePath = f'{recFolder}{subjectCode}'
         if not os.path.exists(self.filePath):   os.makedirs(self.filePath)
 
@@ -21,22 +20,27 @@ class Recorder:
         self.file = open(f"{self.filePath}.txt", "w")
         self.fileTimestamp = open(f"{self.filePath}_timestamp.txt", "w")
         self.fileEvents = open(f"{self.filePath}_events.txt", "w")
-        self.host = HOST
+        self.host = host
         self.name = 'Recorder'
 
-        neededPorts = ['InfoDictionary', 'EEGData', 'EventBus']
+        neededPorts = ['InfoDictionary', 'EEGData', 'EventBus', 'host']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
-
-        # threading.Thread(target=emergency_kill, daemon=True).start()
 
 
 
     def init_sockets(self, managerPort, neededPorts):
         portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
+        if portDict['host'] is not None:    self.host = portDict['host']
+
+        isMain = get_isMain(host=self.host, managerPort=managerPort)
+        multiplePC = get_isMultiplePC(host=self.host, managerPort=managerPort)
+
+        if multiplePC and not isMain:     eventsIP = '0.0.0.0'
+        else:                             eventsIP = self.host
             
         self.InfoDictPort = portDict['InfoDictionary']
         self.EEGPort = portDict['EEGData']
-        self.event_socket = TCPServer(host=HOST, port=portDict['EventBus'], serverName='EventBus', node=self)
+        self.event_socket = TCPServer(host=eventsIP, port=portDict['EventBus'], serverName='EventBus', node=self)
 
     def run(self):
         self.event_socket.start()

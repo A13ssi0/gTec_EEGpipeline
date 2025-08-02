@@ -1,16 +1,15 @@
-from utils.server import UDPServer, safeClose_socket
+from utils.server import UDPServer, safeClose_socket, wait_for_udp_server, get_serversPort, send_udp
 import time
 
-HOST = '127.0.0.1'
 
 class PortManager:
-    def __init__(self, host=HOST, managerPort=5000):
+    def __init__(self, host='127.0.0.1', managerPort=5000, isMain=True, useMultiplePc=False):
         self.dictPorts = {}
-        self.port_socket = UDPServer(host=host, port=managerPort, serverName='PortManager', node=self)
+        self.host = host if not (isMain and useMultiplePc) else '0.0.0.0'
+        self.port_socket = UDPServer(host=self.host, port=managerPort, serverName='PortManager', node=self)
         self.name = 'PortManager'
-        # threading.Thread(target=emergency_kill, daemon=True).start()
-
-
+        self.isMain = isMain
+        self.useMultiplePc = useMultiplePc
 
     def set_dictPorts(self, ports_dict):
         self.dictPorts = ports_dict
@@ -24,10 +23,18 @@ class PortManager:
             print(f"[{self.name}]: Port '{port_name}' already exists.")
 
     def get_port(self, port_name):
-        return self.dictPorts[port_name]
+        return self.dictPorts[port_name] if port_name in self.dictPorts else None
     
     def run(self):
         self.port_socket.start()
+        if not self.isMain:
+            IPAddrMain = self.dictPorts['IPAddrMain']
+            PortMain = self.dictPorts['PortMain']
+            wait_for_udp_server(IPAddrMain, PortMain)
+            self.dictPorts.update(get_serversPort(host=IPAddrMain, managerPort=PortMain, neededPorts=['OutputMapper']))
+            send_udp(self.port_socket.sock, (IPAddrMain, PortMain), f"ADD_PORTS/IPAddrSecondary/{self.dictPorts['IPAddrSecondary']}")
+            send_udp(self.port_socket.sock, (IPAddrMain, PortMain), f"ADD_PORTS/EventBus2/{self.dictPorts['EventBus']}")
+
         while not self.port_socket._stopEvent.is_set():
             time.sleep(0.1)
     

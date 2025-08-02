@@ -12,6 +12,8 @@ import json, threading, keyboard
 
 managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
 portDict = json.loads(sys.argv[2]) if len(sys.argv) > 2 else None
+isMain = sys.argv[3].lower() == 'true' if len(sys.argv) > 3 else True
+useMultiplePc = sys.argv[4].lower() == 'true' if len(sys.argv) > 4 else False
 
 
 stop_event = threading.Event()
@@ -19,7 +21,7 @@ def on_hotkey():    stop_event.set()
 keyboard.add_hotkey('F1', on_hotkey)
 keyboard.add_hotkey('F12', on_hotkey)
 
-npm = PortManager(managerPort=managerPort)
+npm = PortManager(managerPort=managerPort, isMain=isMain, useMultiplePc=useMultiplePc)
 if portDict:    npm.set_dictPorts(portDict)
 thread = threading.Thread(target=npm.run)
 thread.start()

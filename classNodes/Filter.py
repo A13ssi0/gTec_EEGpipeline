@@ -2,22 +2,20 @@ import socket, ast
 from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, safeClose_socket, get_serversPort
   
 
-HOST = '127.0.0.1'
-
 class Filter:
-    def __init__(self, managerPort=25798):
-        self.host = HOST
+    def __init__(self, managerPort=25798, host='127.0.0.1'):
+        self.host = host
         self.name = 'Filter'
         self.filter = []
 
-        neededPorts = ['InfoDictionary', 'EEGData', 'FilteredData']
+        neededPorts = ['InfoDictionary', 'EEGData', 'FilteredData', 'host']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
 
-        # threading.Thread(target=emergency_kill, daemon=True).start()
 
 
     def init_sockets(self, managerPort, neededPorts):
         portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
+        if portDict['host'] is not None:    self.host = portDict['host']
 
         self.EEGPort = portDict['EEGData']
         self.InfoDictPort = portDict['InfoDictionary']
@@ -31,8 +29,7 @@ class Filter:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
             send_udp(udp_sock, (self.host,self.InfoDictPort), "GET_INFO")  
             _, raw_info, _ = recv_udp(udp_sock)
-            try:
-                self.info = ast.literal_eval(raw_info) 
+            try:    self.info = ast.literal_eval(raw_info) 
             except Exception as e:
                 print(f"[{self.name}] Failed to parse info: {e}")
                 self.info = {}

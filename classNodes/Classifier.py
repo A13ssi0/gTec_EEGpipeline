@@ -4,7 +4,7 @@ import utils as utils
 from scipy.io import loadmat
 from pyriemann.utils.test import is_sym_pos_def
 from utils.buffer import Buffer
-from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, get_serversPort
+from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, get_serversPort, get_isMultiplePC, get_isMain
 from py_utils.data_managment import load
 from py_utils.eeg_managment import get_channelsMask
 from py_utils.signal_processing import get_covariance_matrix_traceNorm_online
@@ -13,12 +13,11 @@ import keyboard, socket, ast, threading
 import numpy as np
 
 
-HOST = '127.0.0.1'
 
 class Classifier:
-    def __init__(self, modelPath, managerPort=25798, laplacianPath=None):
+    def __init__(self, modelPath, managerPort=25798, laplacianPath=None, host='127.0.0.1'):
         self.name = 'Classifier'
-        self.host = HOST
+        self.host = host
         self._stopEvent = threading.Event()
 
         self.classifier_dict = load(modelPath)  if modelPath!='test' else None
@@ -26,12 +25,17 @@ class Classifier:
         self.classifier = self.classifier_dict['fgmdm'] if modelPath!='test' else None
         self.laplacian = loadmat(laplacianPath)['lapMask'] if laplacianPath and modelPath!='test' else None
 
-        neededPorts = ['FilteredData', 'InfoDictionary', 'OutputMapper']
+        self.isMain = get_isMain(host=self.host, managerPort=managerPort)
+        self.multiplePC = get_isMultiplePC(host=self.host, managerPort=managerPort)
+        self.managerPort = managerPort
+
+        neededPorts = ['FilteredData', 'InfoDictionary', 'OutputMapper', 'host']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
       
 
     def init_sockets(self, managerPort, neededPorts):
         portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
+        if portDict['host'] is not None:    self.host = portDict['host']
 
         self.FilteredPort = portDict['FilteredData']
         self.InfoDictPort = portDict['InfoDictionary']
@@ -56,8 +60,10 @@ class Classifier:
         send_tcp(b'FILTERS', self.filtSock)
         print(f"[{self.name}] Connected to data source.")
 
+        if self.multiplePC and not self.isMain:     IPAddrMain = get_serversPort(host=self.host, managerPort=self.managerPort, neededPorts=['IPAddrMain'])
+        else:                                       IPAddrMain = self.host
 
-        self.probSock = wait_for_tcp_server(self.host, self.MapperPort)
+        self.probSock = wait_for_tcp_server(IPAddrMain, self.MapperPort)
         send_tcp(b'', self.probSock)
         print(f"[{self.name}] Connected to output mapper. Starting classifier loop...")
 
@@ -68,6 +74,8 @@ class Classifier:
     def start_fake_classifier(self):
         value = 0.5
         step = 0.02     # at 25 Hz, this gives a 0.5 movement in 1 second
+        if self.isMain: keyboardCommands = ['left', 'right']
+        else:           keyboardCommands = ['a', 'd']
 
         while not self._stopEvent.is_set():
             try:
@@ -75,8 +83,8 @@ class Classifier:
                 prob = np.array([value, 1-value])  # Simulated probabilities
                 send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
 
-                if keyboard.is_pressed('left'):         value += step
-                elif keyboard.is_pressed('right'):      value -= step
+                if keyboard.is_pressed(keyboardCommands[0]):         value += step
+                elif keyboard.is_pressed(keyboardCommands[1]):       value -= step
                 else: value= 0.5  
                 value = np.clip(value, 0, 1) 
             except Exception as e:

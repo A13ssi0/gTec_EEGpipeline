@@ -4,17 +4,17 @@ import socket, ast, threading
 from utils.buffer import BufferVisualizer
 from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, get_serversPort
 
-HOST = '127.0.0.1'
+
 
 class Visualizer:
-    def __init__(self, managerPort=25798, lenWindow=10): 
+    def __init__(self, managerPort=25798, lenWindow=10, host='127.0.0.1'): 
         self.name = 'Visualizer'
         self.lenWindow = lenWindow
-        self.host = HOST
+        self.host = host
         self.last_plot_time = 0
         self.applyCAR = False
         self.scale = 1000
-        neededPorts = ['FilteredData', 'InfoDictionary']
+        neededPorts = ['FilteredData', 'InfoDictionary', 'host']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
 
         self._stopEvent = threading.Event()
@@ -22,6 +22,7 @@ class Visualizer:
 
     def init_sockets(self, managerPort, neededPorts):
         portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
+        if portDict['host'] is not None:    self.host = portDict['host']
 
         self.FilteredPort = portDict['FilteredData']
         self.InfoDictPort = portDict['InfoDictionary']
