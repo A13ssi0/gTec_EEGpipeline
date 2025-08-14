@@ -51,7 +51,8 @@ class OutputMapper:
                     self.integratedProb = self.alpha * self.integratedProb + (1 - self.alpha) * weighted_probabilities
                     self.percPosX = self.integratedProb[1] # LINEAR
                     self.PercX_socket.broadcast(self.percPosX)
-                    if count%25==0: print(f"[{self.name}]  WProb:{weighted_probabilities}, Integrated:{self.integratedProb}, PercPosX:{self.percPosX}") #Prob:{probabilities},
+                    # if count%25==0: print(f"[{self.name}]  WProb:{weighted_probabilities}, Integrated:{self.integratedProb}, PercPosX:{self.percPosX}") #Prob:{probabilities},
+                    # if count%25==0: print(f"[{self.name}] PercPosX:{self.percPosX}") #Prob:{probabilities},
                     for prob in self.probabilities: prob['isNew'] = False
                     self.new_data_event.clear()
 

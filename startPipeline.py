@@ -48,7 +48,7 @@ model = 'test'  # Default model for testing
 lenWindowVisualizer = '10' 
 
 alpha = 0.96
-weights = [1, 1]
+weights = [1]
 
 # ---------------------------------------------------------------------------------------------
 

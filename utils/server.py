@@ -28,6 +28,7 @@ class UDPServer(threading.Thread):
         self.clientList = []
 
     def run(self):
+        lastErrorAddr = None
         try:
             while not self._stopEvent.is_set():
                 try:
@@ -44,6 +45,15 @@ class UDPServer(threading.Thread):
                     else:   print(f"[{self.serverName}] Unknown message from {addr}: {msg}")
 
                 except socket.timeout:  continue
+                except OSError as e:
+                    if self._stopEvent.is_set(): break
+                    if e.errno == 10054:
+                        if addr != lastErrorAddr:
+                            print(f"[{self.serverName}] Client {addr} closed connection (WinError 10054)")
+                            lastErrorAddr = addr
+                        continue
+                    else:
+                        print(f"[{self.serverName}] OSError: {e}")
                 except Exception as e:
                     if self._stopEvent.is_set(): break
                     print(f"[{self.serverName}] Error: {e}")
@@ -53,7 +63,7 @@ class UDPServer(threading.Thread):
 
     def broadcast(self, message):
         for client in self.clientList:
-            print(f"[{self.serverName}] Broadcasting to {client}: {message}")
+            # print(f"[{self.serverName}] Broadcasting to {client}: {message}")
             try:    send_udp(self.sock, client, message)
             except Exception as e:
                 print(f"[{self.serverName}] Broadcast error to {client}: {e}")
