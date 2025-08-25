@@ -33,7 +33,7 @@ class UDPServer(threading.Thread):
             while not self._stopEvent.is_set():
                 try:
                     _, msg, addr = recv_udp(self.sock)
-                    print(f"[{self.serverName}] Received message from {addr}: {msg}")
+                    # print(f"[{self.serverName}] Received message from {addr}: {msg}")
 
                     if      msg == 'PING':              send_udp(self.sock, addr, 'PONG')
                     elif    msg == 'IS_MAIN':           send_udp(self.sock, addr, str(self.node.isMain))
@@ -71,16 +71,16 @@ class UDPServer(threading.Thread):
 
     def manage_info(self, msg, addr):
         if msg == 'GET_INFO':   send_udp(self.sock, addr, str(self.node.info))
-        elif msg == 'ADD_INFO':
-            try:
-                info = ast.literal_eval(msg.split('/')[1])
-                for key, value in info.items():
-                    if key not in self.node.info:   self.node.info[key] = value
-                    elif self.node.info[key] != value:
-                        print(f"[{self.serverName}] Updating info: {key} = {value}")
-                        self.node.info[key] = value
-            except Exception as e:
-                print(f"[{self.serverName}] Error updating info: {e}")
+        # elif msg == 'ADD_INFO':
+        #     try:
+        #         info = ast.literal_eval(msg.split('/')[1])
+        #         for key, value in info.items():
+        #             if key not in self.node.info:   self.node.info[key] = value
+        #             elif self.node.info[key] != value:
+        #                 print(f"[{self.serverName}] Updating info: {key} = {value}")
+        #                 self.node.info[key] = value
+        #     except Exception as e:
+        #         print(f"[{self.serverName}] Error updating info: {e}")
            
 
     def manage_ports(self, msg, addr):
@@ -193,7 +193,7 @@ class TCPServer(threading.Thread):
 
 
 class TCPClientHandler(threading.Thread):
-    def __init__(self, conn, addr, server,):
+    def __init__(self, conn, addr, server):
         super().__init__(daemon=True)
         self.conn = conn
         self.addr = addr
@@ -207,6 +207,7 @@ class TCPClientHandler(threading.Thread):
                 if msg.startswith('EV'): self.server.node.save_event(ts, msg[2:])
                 elif 'FILTERS' in msg:    self.manage_filters(msg)
                 elif msg.startswith('PROB'): self.manage_probabilities(ts,msg)
+                elif 'INFO' in msg: self.manage_info(msg)
 
         except Exception as e:
             if not self._stopEvent.is_set():    print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
@@ -221,7 +222,23 @@ class TCPClientHandler(threading.Thread):
         try:    self.conn.close()
         except Exception:   pass
 
+    def manage_info(self, msg):
+        msg = msg.split('/')
+        msg[1] = ast.literal_eval(msg[1]) if isinstance(msg[1], str) and msg[1].startswith('{') else msg[1]
+        try:
+            if msg[0] == 'ADD_INFO':
+                print(f"[{self.server.serverName}] Adding info into : {self.server.node.info}")
+                for key, value in msg[1].items():
+                    if key not in self.server.node.info:   self.server.node.info[key] = value
+                    else:   print(f"[{self.server.serverName}] {key} already present with value {self.server.node.info[key]}")
+            elif msg[0] == 'UPDATE_INFO':
+                for key, value in msg[1].items():
+                    if key not in self.server.node.info:   print(f"[{self.server.serverName}] {key} is not present in infoDictionary, cannot update.")
+                    else:   self.server.node.info[key] = value
 
+            print(f"[{self.server.serverName}] Updated info into : {self.server.node.info}")
+        except Exception as e:
+            print(f"[{self.server.serverName}] Error managing info: {e}")
 
     def manage_filters(self, msg):
         if msg.startswith('FILTERS'):               self.handle_filter_command(msg)

@@ -7,12 +7,11 @@ from utils.server import get_free_ports, check_free_port
 
 useMultiplePc = False
 portMain = 25798  
+genPath = 'c:/Users/aless/Desktop/gNautilus'  # Path to the model
 
 # ---------------------------------------------------------------------------------------------
-
 host = '127.0.0.1'
 free_ports = get_free_ports(ip=host, n=6)
-genPath = 'c:/Users/aless/Desktop/gNautilus'  # Path to the model
 
 hostname = socket.gethostname()    
 IPAddr = socket.gethostbyname(hostname) 
@@ -29,14 +28,15 @@ else:
     isMain = True
     if useMultiplePc:     print(f"[!!!] SECONDARY IP ADDRESS [!!!] : {IPAddr}")
 
-
 # ---------------------------------------------------------------------------------------------
+
+
+
 
 recFolder = f'{genPath}/data/recordings/'
 laplacianPath = f'{genPath}/lapMask16Nautilus.mat'  # Path to the laplacian mask
 modelFolder = f'{genPath}/'  # Path to the model
 
-# ---------------------------------------------------------------------------------------------
 
 subjectCode = 'zzRecTest1' if isMain else 'zzRecTest2'  # Default subject code
 runType =  "test" # Default run type (e.g., 'calibration', 'evaluation', 'test')
@@ -49,6 +49,9 @@ lenWindowVisualizer = '10'
 
 alpha = 0.96
 weights = [1]
+
+
+
 
 # ---------------------------------------------------------------------------------------------
 

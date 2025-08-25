@@ -81,6 +81,7 @@ class Recorder:
         print(f"[{self.name}] Recorder closed.")
 
     def save_event(self, ts, eventCode):
+        # print(f"[{self.name}] Event received: {ts} {eventCode}")
         self.fileEvents.write(f"{ts} {eventCode}\n")
         
 
