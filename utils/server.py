@@ -224,6 +224,7 @@ class TCPClientHandler(threading.Thread):
 
     def manage_info(self, msg):
         msg = msg.split('/')
+        print(f"[{self.server.serverName}] Managing info message: {msg}")
         msg[1] = ast.literal_eval(msg[1]) if isinstance(msg[1], str) and msg[1].startswith('{') else msg[1]
         try:
             if msg[0] == 'ADD_INFO':
@@ -445,7 +446,7 @@ def safeClose_socket(sock, name='Socket', timeout=0.5):
         sock.close()
         if sock.is_alive(): sock.join(timeout=timeout)
     except Exception as e:
-        print(f"[{name}] InfoDict socket close error: {e}")
+        print(f"[{name}] Socket close error: {e}")
 
 def get_serversPort(host, managerPort, neededPorts):
     portDict = {port: None for port in neededPorts}

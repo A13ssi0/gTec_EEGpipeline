@@ -14,7 +14,7 @@ import os
 
 
 
-def main(task='mi_bfbh', filter_order=2, windowsLength=1, classes=[771, 773]):
+def main(filter_order=2, windowsLength=1, classes=None):
 
     bandPass = [[6, 24]]
     stopBand = [[14, 18]]
@@ -22,8 +22,11 @@ def main(task='mi_bfbh', filter_order=2, windowsLength=1, classes=[771, 773]):
     applyLog = True
     doRecenter = False
 
-    pathModels = 'c:/Users/aless/Desktop/gNautilus/data/models'
-    pathData = 'c:/Users/aless/Desktop/gNautilus/data/recordings'
+    genPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+    pathData = f'{genPath}/recordings/'
+    pathModels = f'{genPath}/models/' 
+
 
     ## -----------------------------------------------------------------------------
     print(' - Loading and preprocessing files')
@@ -34,10 +37,12 @@ def main(task='mi_bfbh', filter_order=2, windowsLength=1, classes=[771, 773]):
     windowsShift = h['dataChunkSize']/fs
     subjectCode = fileNames[0].split('/')[-3]
 
-
-    # ## -----------------------------------------------------------------------------    
-    wantedChannels = channels
-    [signal, channels] = select_channels(signal, wantedChannels, actualChannels=channels)
+    if 'bfbh' in fileNames[0]:   
+        task = 'mi_bfbh'
+        if classes is None: classes = [771, 773]
+    elif 'lhrh' in fileNames[0]: 
+        task = 'mi_lhrh'
+        if classes is None: classes = [769, 770]
 
 
     # ## ----------------------------------------------------------------------------- Processing Train
@@ -50,11 +55,21 @@ def main(task='mi_bfbh', filter_order=2, windowsLength=1, classes=[771, 773]):
 
     # if applyLog: filt_signal = utils.get_logpower(filt, fs)  # da sistemare ----------------------------------------------------------------------------------
 
+
     #-------------------------------------------------------------------------------   
-    pathLaplacian = 'c:/Users/aless/Desktop/gNautilus/lapMask16Nautilus.mat'
+    if 'na' in h['device'].lower(): pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
+    elif 'un' in h['device'].lower(): pathLaplacian = f'c{genPath}/lapMask8Unicorn.mat'
+    else: pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
+
     laplacian = loadmat(pathLaplacian)
     laplacian = laplacian['lapMask']
     lap_signal = filt_signal @ laplacian
+
+
+    # ## -----------------------------------------------------------------------------    
+    wantedChannels = channels
+    [signal, channels] = select_channels(signal, wantedChannels, actualChannels=channels)
+
 
     # ## ----------------------------------------------------------------------------- Covariances
     [covs, cov_events] = get_trNorm_covariance_matrix(lap_signal, events_dataFrame, windowsLength, windowsShift, fs)
@@ -91,7 +106,8 @@ def main(task='mi_bfbh', filter_order=2, windowsLength=1, classes=[771, 773]):
         'inv_sqrt_mean_cov': inv_sqrt_mean_cov if doRecenter else None,
         'classes': classes,
         'channels': channels,
-        'trainFiles': fileNames
+        'trainFiles': fileNames,
+        'laplacian': laplacian
     }
 
     now = datetime.now().strftime("%Y%m%d.%H%M")

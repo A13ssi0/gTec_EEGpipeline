@@ -5,7 +5,8 @@
 .vscode
 *.pdf
 __pycache__
-zz.py
 spectogramValidation.py
-recordings
+recordings/*
 extra/
+models/*
+weights/*

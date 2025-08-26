@@ -6,12 +6,12 @@ from py_utils.data_managment import fix_mat
 
 
 class Acquisition:
-    def __init__(self, device=None, managerPort=25798, host='127.0.0.1'):
+    def __init__(self, device=None, managerPort=25798, alpha=None, host='127.0.0.1'):
         self.name = 'Acquisition'
         self.nSamples = 0
         self.device = device
         self.host = host
-        self.info = {}
+        self.info = {'alpha': alpha} if alpha is not None else {}
 
         neededPorts = ['InfoDictionary', 'EEGData', 'host']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
@@ -124,7 +124,8 @@ class Acquisition:
 
     def SetUnicornSettings(self):
         self.info['SampleRate'] = UnicornPy.SamplingRate
-        self.info['channels'] = ['EEG '+str(i) for i in range(1,9)] # from 1 to 8
+        # self.info['channels'] = ['EEG '+str(i) for i in range(1,9)]
+        self.info['channels'] = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'O1', 'Oz', 'O2']
         self.info['dataChunkSize'] = 10
 
 

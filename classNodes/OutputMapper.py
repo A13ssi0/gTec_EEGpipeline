@@ -1,4 +1,4 @@
-from utils.server import TCPServer, UDPServer, safeClose_socket, get_serversPort, get_isMultiplePC
+from utils.server import TCPServer, UDPServer, safeClose_socket, get_serversPort, get_isMultiplePC, wait_for_tcp_server, send_tcp
 import threading, time, numpy as np, socket
 
 class OutputMapper:
@@ -28,11 +28,11 @@ class OutputMapper:
         self.Prob_socket = TCPServer(host=self.host, port=portDict['OutputMapper'], serverName=self.name, node=self)
         self.PercX_socket = UDPServer(host=self.host, port=portDict['PercPosX'], serverName=self.name, node=self)
 
-
     def run(self):
         self.Prob_socket.start()
         self.PercX_socket.start()
         print(f"[{self.name}] Starting output merging ...")
+
         count = 0
 
         while len(self.probabilities) != len(self.weights) :    time.sleep(0.1)

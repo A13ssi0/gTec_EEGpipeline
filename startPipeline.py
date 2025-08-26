@@ -1,4 +1,4 @@
-import subprocess, sys, json, socket
+import subprocess, sys, json, socket, os
 from utils.server import get_free_ports, check_free_port
 
 
@@ -6,10 +6,27 @@ from utils.server import get_free_ports, check_free_port
 # ---------------------------------------------------------------------------------------------
 
 useMultiplePc = False
+
 portMain = 25798  
-genPath = 'c:/Users/aless/Desktop/gNautilus'  # Path to the model
+genPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+recFolder = f'{genPath}/recordings/'
+modelFolder = f'{genPath}/models/'  # Path to the model
+
+
+runType =  "test" # Default run type (e.g., 'calibration', 'evaluation', 'test')
+task = 'mi_bfbh'  # Default task
+
+# device = 'UN-2023.07.19'
+device = 'test'  # Default device for testing
+model = 'test'  # Default model for testing
+
+# subjectCode = 'zzRecTest1'  # Default subject code
+
+
 
 # ---------------------------------------------------------------------------------------------
+
 host = '127.0.0.1'
 free_ports = get_free_ports(ip=host, n=6)
 
@@ -30,28 +47,19 @@ else:
 
 # ---------------------------------------------------------------------------------------------
 
+if device == 'test':    
+    subjectCode = 'zzRecTest1' if isMain else 'zzRecTest2'  # Default subject code
+    alpha = 0.96
+    weights = [1,1]
 
+if runType == 'calibration':   alpha = None
+# ---------------------------------------------------------------------------------------------
 
+if 'un' in device.lower():      laplacianPath = f'{genPath}/lapMask8Unicorn.mat' 
+elif 'na' in device.lower():    laplacianPath = f'{genPath}/lapMask16Nautilus.mat'  
+else:                           laplacianPath = f'{genPath}/lapMask16Nautilus.mat'
 
-recFolder = f'{genPath}/data/recordings/'
-laplacianPath = f'{genPath}/lapMask16Nautilus.mat'  # Path to the laplacian mask
-modelFolder = f'{genPath}/'  # Path to the model
-
-
-subjectCode = 'zzRecTest1' if isMain else 'zzRecTest2'  # Default subject code
-runType =  "test" # Default run type (e.g., 'calibration', 'evaluation', 'test')
-task = 'mi_bfbh'  # Default task
-
-# device = 'UN-2023.07.19'
-device = 'test'  # Default device for testing
-model = 'test'  # Default model for testing
 lenWindowVisualizer = '10' 
-
-alpha = 0.96
-weights = [1]
-
-
-
 
 # ---------------------------------------------------------------------------------------------
 
@@ -80,8 +88,9 @@ if useMultiplePc and not isMain:
 # ---------------------------------------------------------------------------------------------
 
 subprocess.Popen([sys.executable, "classLaunchers\launchPortManager.py", portManagerPort, json.dumps(portDict), str(isMain), str(useMultiplePc)]) # F1
-subprocess.Popen([sys.executable, "classLaunchers\launchAcquisition.py", device, portManagerPort])  # F2
-subprocess.Popen([sys.executable, "classLaunchers\launchFilter.py", portManagerPort])  # F3
+subprocess.Popen([sys.executable, "classLaunchers\launchAcquisition.py", device, portManagerPort, str(alpha)])  # F2
 subprocess.Popen([sys.executable, "classLaunchers\launchRecorder.py", portManagerPort, subjectCode, recFolder, runType, task]) # F5
-subprocess.Popen([sys.executable, "classLaunchers\launchClassifier.py", f'{modelFolder}{model}', portManagerPort, laplacianPath]) # F6
-if isMain: subprocess.Popen([sys.executable, "classLaunchers\launchOutputMapper.py", portManagerPort, str(weights), str(alpha)]) # F7
+if runType == 'evaluation' or runType == 'test': 
+    subprocess.Popen([sys.executable, "classLaunchers\launchFilter.py", portManagerPort])  # F3
+    subprocess.Popen([sys.executable, "classLaunchers\launchClassifier.py", f'{modelFolder}{subjectCode}/{model}', portManagerPort, laplacianPath]) # F6
+    if isMain: subprocess.Popen([sys.executable, "classLaunchers\launchOutputMapper.py", portManagerPort, str(weights), str(alpha)]) # F7

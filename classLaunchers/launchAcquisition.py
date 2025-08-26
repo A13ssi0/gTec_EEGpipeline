@@ -14,6 +14,7 @@ if len(sys.argv) < 2:                                   device = 'test'  # Defau
 elif sys.argv[1] == 'None' or len(sys.argv[1]) == 0:     device = None
 else:                                                   device = sys.argv[1]
 managerPort = int(sys.argv[2]) if len(sys.argv) > 2 else 25798
+alpha = float(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3]!='None' else None
 
 
 stop_event = threading.Event()
@@ -21,7 +22,7 @@ def on_hotkey():    stop_event.set()
 keyboard.add_hotkey('F1', on_hotkey)
 keyboard.add_hotkey('F12', on_hotkey)
 
-na = Acquisition(device=device, managerPort=managerPort)
+na = Acquisition(device=device, managerPort=managerPort, alpha=alpha)
 thread = threading.Thread(target=na.run)
 thread.start()
 
