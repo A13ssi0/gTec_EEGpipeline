@@ -6,7 +6,7 @@
 *.pdf
 __pycache__
 spectogramValidation.py
-recordings/*
+data/recordings/*
 extra/
-models/*
-weights/*
+data/models/*
+data/weights/*

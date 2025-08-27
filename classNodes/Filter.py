@@ -45,7 +45,9 @@ class Filter:
                     _, matrix = recv_tcp(tcp_sock)
 
                     if self.filter: 
-                        for filt in self.filter: matrix = filt.filter(matrix)
+                        for filt in self.filter: 
+                            # print(f"[{self.name}] Applying filter: {filt}.")
+                            matrix = filt.filter(matrix)
                 
                     try:    self.Filtered_socket.broadcast(matrix)
                     except Exception as e:

@@ -268,7 +268,7 @@ class TCPClientHandler(threading.Thread):
                 filt = RealTimeButterFilter(2, lp, self.server.node.info['SampleRate'], 'lowpass')
             else:
                 return
-            if append:  self.server.node.filter.append([filt])
+            if append:  self.server.node.filter.append(filt)
             else:       self.server.node.filter = [filt]
             print(f"[{self.server.serverName}] Filter set: {msg}")
         except Exception as e:

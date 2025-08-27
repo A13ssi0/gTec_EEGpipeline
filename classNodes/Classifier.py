@@ -21,7 +21,7 @@ class Classifier:
         self._stopEvent = threading.Event()
 
         self.classifier_dict = load(modelPath)  if modelPath!='test' else None
-        self.buffer = Buffer((self.classifier_dict['windowsLength'], len(self.classifier_dict['channels']))) if modelPath!='test' else None
+        self.buffer = Buffer((self.classifier_dict['windowsLength']*self.classifier_dict['fs'], len(self.classifier_dict['channels']))) if modelPath!='test' else None
         self.classifier = self.classifier_dict['fgmdm'] if modelPath!='test' else None
         self.laplacian = loadmat(laplacianPath)['lapMask'] if laplacianPath and modelPath!='test' else None
 
@@ -99,40 +99,38 @@ class Classifier:
         channelMask = get_channelsMask(self.classifier_dict['channels'], self.info['channels'])
       
         message = 'FILTERS'
+        # print(f"[{self.name}] SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA {self.classifier_dict['bandPass']}.")
         if self.classifier_dict['bandPass']:
-            hp = self.classifier_dict['bandPass'][0]
-            lp = self.classifier_dict['bandPass'][1]
+            hp = self.classifier_dict['bandPass'][0][0]
+            lp = self.classifier_dict['bandPass'][0][1]
             cutHp = f'/hp{hp}' 
             cutLp = f'/lp{lp}' 
             send_tcp(f'{message}{cutHp}{cutLp}'.encode('utf-8'), self.filtSock)
             message = 'APPEND_FILTERS'
         if self.classifier_dict['stopBand']:
-            hp = self.classifier_dict['stopBand'][0]
-            lp = self.classifier_dict['stopBand'][1]
+            hp = self.classifier_dict['stopBand'][0][0]
+            lp = self.classifier_dict['stopBand'][0][1]
             cutHp = f'/hp{hp}' 
             cutLp = f'/lp{lp}' 
             send_tcp(f'{message}{cutHp}{cutLp}/bstop'.encode('utf-8'), self.filtSock)
 
         while not self.buffer.isFull:
             _, matrix = recv_tcp(self.filtSock)
-            if self.laplacian is not None:  matrix = matrix @ self.laplacian
+            # if self.laplacian is not None:  matrix = matrix @ self.laplacian
+            # print(f"[{self.name}] AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA {matrix[:, channelMask].shape}")
             self.buffer.add_data(matrix[:, channelMask])
 
         while not self._stopEvent.is_set():
             try:
                 cov = get_covariance_matrix_traceNorm_online(self.buffer.data)
-
                 if self.classifier_dict['inv_sqrt_mean_cov'] is not None:
                     cov = center_covariance_online(cov, self.classifier_dict['inv_sqrt_mean_cov'])
-
                 if not (is_sym_pos_def(cov)): print(f"[!!!][{self.name}] Covariance matrix is not SPD")
-
                 prob = self.classifier.predict_probabilities(cov)
+                prob = prob[0][0]
                 send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
-
-
                 _, matrix = recv_tcp(self.filtSock)
-                if self.laplacian is not None:  matrix = matrix @ self.laplacian
+                # if self.laplacian is not None:  matrix = matrix @ self.laplacian
                 self.buffer.add_data(matrix[:, channelMask])
 
 

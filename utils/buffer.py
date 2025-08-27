@@ -3,10 +3,13 @@ import numpy as np
 class Buffer:
     def __init__(self, shape):
         self.data = np.zeros(shape)
+        # print(f" WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW {self.data.shape}")
         self.ptr = 0
         self.isFull = False
 
     def add_data(self, new_data):
+        # print(f" BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB {new_data.shape}")
+        # print(f" BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB {self.data.shape}")
         n_samples = new_data.shape[0]
         self.ptr = self.ptr + n_samples
 
@@ -15,7 +18,9 @@ class Buffer:
         self.data[:-n_samples, :] = self.data[n_samples:, :]
         self.data[-n_samples:, :] = new_data
 
-        if not self.isFull and self.ptr == self.data.shape[0]: self.isFull = True  # Buffer was filled completely
+        if not self.isFull and self.ptr == self.data.shape[0]: 
+            # print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA Buffer filled completely.")
+            self.isFull = True  # Buffer was filled completely
 
     def remove_mean(self):
         mean = np.mean(self.data, axis=0)

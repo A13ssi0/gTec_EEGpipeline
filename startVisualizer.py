@@ -10,7 +10,7 @@ portManagerPort = str(25798)
 
 # ---------------------------------------------------------------------------------------------
 # device = 'UN-2023.07.19'
-device = 'test'  # Default device for testing
+device = 'un'  # Default device for testing
 lenWindowVisualizer = '10' 
 
 # ---------------------------------------------------------------------------------------------

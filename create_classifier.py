@@ -57,17 +57,18 @@ def main(filter_order=2, windowsLength=1, classes=None):
 
 
     #-------------------------------------------------------------------------------   
-    if 'na' in h['device'].lower(): pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
-    elif 'un' in h['device'].lower(): pathLaplacian = f'c{genPath}/lapMask8Unicorn.mat'
-    else: pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
+    # if 'na' in h['device'].lower(): pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
+    # elif 'un' in h['device'].lower(): pathLaplacian = f'c{genPath}/lapMask8Unicorn.mat'
+    # else: pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
+    pathLaplacian = f'{genPath}/lapMask8Unicorn.mat'
 
     laplacian = loadmat(pathLaplacian)
     laplacian = laplacian['lapMask']
-    lap_signal = filt_signal @ laplacian
+    lap_signal = filt_signal #@ laplacian
 
 
     # ## -----------------------------------------------------------------------------    
-    wantedChannels = channels
+    wantedChannels = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'O1', 'Oz', 'O2']
     [signal, channels] = select_channels(signal, wantedChannels, actualChannels=channels)
 
 
@@ -84,11 +85,19 @@ def main(filter_order=2, windowsLength=1, classes=None):
         print(' - Recentering covariance matrices around eye')
         covs_centered = center_covariances(covs, mean_cov, inv_sqrt_mean_cov)
         
-
-    if not (is_sym_pos_def(covs_centered)): raise ValueError('Covariance matrices are not symmetric positive definite')
+    counter = 0
+    for i in range(covs_centered.shape[1]):
+        eigenvalues = np.linalg.eigvalsh(covs_centered[:,i])
+        if np.any(eigenvalues <= 0):
+            counter += 1
+            print(f'   ! Covariance matrix {i} is not full rank. Eigenvalues: {eigenvalues}')
+    if counter>0: print(f' - Warning: {counter} covariance matrices are not full rank of a total of {covs_centered.shape[1]}.')
+    if not (is_sym_pos_def(covs_centered[:,fdbVector])): raise ValueError('Covariance matrices are not symmetric positive definite')
 
     
     # ## ----------------------------------------------------------------------------- Fitting models
+    covs_centered = covs_centered[:, fdbVector]
+    labelVector = labelVector[fdbVector]
     
     print(' - Training models')
     fgmdm = FgMDM(njobs=-1)

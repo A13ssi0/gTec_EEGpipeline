@@ -14,16 +14,17 @@ recFolder = f'{genPath}/recordings/'
 modelFolder = f'{genPath}/models/'  # Path to the model
 
 
-runType =  "test" # Default run type (e.g., 'calibration', 'evaluation', 'test')
-task = 'mi_bfbh'  # Default task
+runType =  "evaluation" # Default run type (e.g., 'calibration', 'evaluation', 'test')
+task = 'mi_lhrh'  # Default task
+
+subjectCode = 'j1'  # Default subject code
 
 # device = 'UN-2023.07.19'
-device = 'test'  # Default device for testing
-model = 'test'  # Default model for testing
+device = 'un'  # Default device for testing
+model = 'j1.20250827.1629.mi_lhrh.joblib'  # Default model for testing
 
-# subjectCode = 'zzRecTest1'  # Default subject code
-
-
+alpha = 0.98
+weights = [1] 
 
 # ---------------------------------------------------------------------------------------------
 
