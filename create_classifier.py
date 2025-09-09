@@ -128,7 +128,7 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
         'channels': channels,
         'trainFiles': fileNames,
         'laplacian': laplacian,
-        'rejectionTh': rejectionThreshold,
+        'rejectionThreshold': rejectionThreshold,
     }
 
     now = datetime.now().strftime("%Y%m%d.%H%M")

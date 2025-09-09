@@ -24,6 +24,8 @@ class Classifier:
         self.buffer = Buffer((self.classifier_dict['windowsLength']*self.classifier_dict['fs'], len(self.classifier_dict['channels']))) if modelPath!='test' else None
         self.classifier = self.classifier_dict['fgmdm'] if modelPath!='test' else None
         self.laplacian = loadmat(laplacianPath)['lapMask'] if laplacianPath and modelPath!='test' else None
+        self.rejectionThreshold = self.classifier_dict['rejectionThreshold'] if modelPath!='test' else None
+
 
         self.isMain = get_isMain(host=self.host, managerPort=managerPort)
         self.multiplePC = get_isMultiplePC(host=self.host, managerPort=managerPort)
@@ -128,7 +130,10 @@ class Classifier:
                 if not (is_sym_pos_def(cov)): print(f"[!!!][{self.name}] Covariance matrix is not SPD")
                 prob = self.classifier.predict_probabilities(cov)
                 prob = prob[0][0]
-                send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
+                if self.rejectionThreshold is not None and np.max(prob)<self.rejectionThreshold:   
+                    send_tcp(f'PROB/{np.nan}/{np.nan}', self.probSock)
+                else:  
+                    send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
                 _, matrix = recv_tcp(self.filtSock)
                 # if self.laplacian is not None:  matrix = matrix @ self.laplacian
                 self.buffer.add_data(matrix[:, channelMask])

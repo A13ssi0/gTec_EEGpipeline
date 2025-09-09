@@ -34,6 +34,7 @@ class OutputMapper:
         print(f"[{self.name}] Starting output merging ...")
 
         count = 0
+        weighted_probabilities = np.array([np.nan, np.nan])
 
         while len(self.probabilities) != len(self.weights) :    time.sleep(0.1)
         self.new_data_event.clear()
@@ -44,13 +45,15 @@ class OutputMapper:
                 if self.new_data_event.is_set():
                     count += 1
                     probabilities = np.array([prob['values'] for prob in self.probabilities])
-                    weighted_avg = np.average(probabilities, axis=0, weights=self.weights)
+                    weighted_avg = self.nanweighted_avg(probabilities, self.weights, axis=0)
 
-                    if weighted_avg[0] != weighted_avg[1]: weighted_probabilities = np.array([1, 0]) if weighted_avg[0] > weighted_avg[1] else np.array([0, 1])
-                    else:   weighted_probabilities = np.array([0.5, 0.5])
-                    self.integratedProb = self.alpha * self.integratedProb + (1 - self.alpha) * weighted_probabilities
-                    self.percPosX = self.integratedProb[1] # LINEAR
-                    self.PercX_socket.broadcast(self.percPosX)
+                    if not np.isnan(weighted_avg).any():
+                        if weighted_avg[0] != weighted_avg[1]: weighted_probabilities = np.array([1, 0]) if weighted_avg[0] > weighted_avg[1] else np.array([0, 1])
+                        else:   weighted_probabilities = np.array([0.5, 0.5])
+                        self.integratedProb = self.alpha * self.integratedProb + (1 - self.alpha) * weighted_probabilities
+                        self.percPosX = self.integratedProb[1] # LINEAR
+                        self.PercX_socket.broadcast(self.percPosX)
+
                     if count%25==0: print(f"[{self.name}]  WAv:{weighted_avg}, WProb:{weighted_probabilities}, Integrated:{self.integratedProb}, PercPosX:{self.percPosX}") #Prob:{probabilities},
                     # if count%25==0: print(f"[{self.name}] PercPosX:{self.percPosX}") #Prob:{probabilities},
                     for prob in self.probabilities: prob['isNew'] = False
@@ -59,6 +62,10 @@ class OutputMapper:
 
         except Exception as e:
             if not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():   print(f"[{self.name}] Error or disconnected:", e)
+
+    def nanweighted_avg(self, values, weights, axis=0): 
+        weights[np.isnan(values)] =  0
+        return np.average(np.nan_to_num(values), axis=axis, weights=weights)
 
 
     def close(self):
