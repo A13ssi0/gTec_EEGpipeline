@@ -10,18 +10,21 @@ useMultiplePc = False
 portMain = 25798  
 genPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
-recFolder = f'{genPath}/recordings/'
-modelFolder = f'{genPath}/models/'  # Path to the model
+# recFolder = f'{genPath}/recordings/'
+recFolder = os.path.join(genPath, "recordings")
+# modelFolder = f'{genPath}/models/'  # Path to the model
+modelFolder = os.path.join(genPath, "models")
+
 
 
 runType =  "evaluation" # Default run type (e.g., 'calibration', 'evaluation', 'test')
 task = 'mi_lhrh'  # Default task
 
-subjectCode = 'j1'  # Default subject code
+subjectCode = 'a1'  # Default subject code
 
 # device = 'UN-2023.07.19'
 device = 'un'  # Default device for testing
-model = 'j1.20250827.1629.mi_lhrh.joblib'  # Default model for testing
+model = 'a1.20250903.1840.mi_lhrh.joblib'  # Default model for testing
 
 alpha = 0.98
 weights = [1] 
@@ -92,6 +95,7 @@ subprocess.Popen([sys.executable, "classLaunchers\launchPortManager.py", portMan
 subprocess.Popen([sys.executable, "classLaunchers\launchAcquisition.py", device, portManagerPort, str(alpha)])  # F2
 subprocess.Popen([sys.executable, "classLaunchers\launchRecorder.py", portManagerPort, subjectCode, recFolder, runType, task]) # F5
 if runType == 'evaluation' or runType == 'test': 
+    path = os.path.join(modelFolder,subjectCode,model)
     subprocess.Popen([sys.executable, "classLaunchers\launchFilter.py", portManagerPort])  # F3
-    subprocess.Popen([sys.executable, "classLaunchers\launchClassifier.py", f'{modelFolder}{subjectCode}/{model}', portManagerPort, laplacianPath]) # F6
+    subprocess.Popen([sys.executable, "classLaunchers\launchClassifier.py", path, portManagerPort, laplacianPath]) # F6
     if isMain: subprocess.Popen([sys.executable, "classLaunchers\launchOutputMapper.py", portManagerPort, str(weights), str(alpha)]) # F7

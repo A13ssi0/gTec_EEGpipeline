@@ -125,7 +125,7 @@ class Acquisition:
     def SetUnicornSettings(self):
         self.info['SampleRate'] = UnicornPy.SamplingRate
         # self.info['channels'] = ['EEG '+str(i) for i in range(1,9)]
-        self.info['channels'] = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'O1', 'Oz', 'O2']
+        self.info['channels'] = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8']
         self.info['dataChunkSize'] = 10
 
 

@@ -7,17 +7,21 @@ from pyriemann.utils.test import is_sym_pos_def
 from scipy.io import loadmat
 from py_utils.signal_processing import get_bandranges, get_trNorm_covariance_matrix
 from py_utils.data_managment import get_files, save
-from py_utils.eeg_managment import select_channels,get_EventsVector_onFeedback
+from py_utils.eeg_managment import select_channels,get_EventsVector_onFeedback,get_channelsMask
 from riemann_utils.covariances import get_riemann_mean_covariance, center_covariances
 from datetime import datetime
 import os
 
 
 
-def main(filter_order=2, windowsLength=1, classes=None):
+def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
 
     bandPass = [[6, 24]]
     stopBand = [[14, 18]]
+
+    wantedChannels = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8']
+
+    rejectionThreshold = 0.51
 
     applyLog = True
     doRecenter = False
@@ -56,20 +60,27 @@ def main(filter_order=2, windowsLength=1, classes=None):
     # if applyLog: filt_signal = utils.get_logpower(filt, fs)  # da sistemare ----------------------------------------------------------------------------------
 
 
-    #-------------------------------------------------------------------------------   
-    # if 'na' in h['device'].lower(): pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
-    # elif 'un' in h['device'].lower(): pathLaplacian = f'c{genPath}/lapMask8Unicorn.mat'
-    # else: pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
-    pathLaplacian = f'{genPath}/lapMask8Unicorn.mat'
+    #-------------------------------------------------------------------------------
+    if applyLaplacian:
+        print(' - Applying Laplacian')   
+        # if 'na' in h['device'].lower(): pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
+        # elif 'un' in h['device'].lower(): pathLaplacian = f'c{genPath}/lapMask8Unicorn.mat'
+        # else: pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
+        pathLaplacian = f'{genPath}/lapMask8Unicorn.mat'
 
-    laplacian = loadmat(pathLaplacian)
-    laplacian = laplacian['lapMask']
-    lap_signal = filt_signal #@ laplacian
+        laplacian = loadmat(pathLaplacian)
+        laplacian = laplacian['lapMask']
+        lap_signal = filt_signal @ laplacian
+    else:
+        lap_signal = filt_signal
+        laplacian = np.eye(filt_signal.shape[-1])
 
 
     # ## -----------------------------------------------------------------------------    
-    wantedChannels = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'O1', 'Oz', 'O2']
-    [signal, channels] = select_channels(signal, wantedChannels, actualChannels=channels)
+    wantedChannels = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8']
+    channelMask = get_channelsMask(wantedChannels, channels)
+    lap_signal = lap_signal[:, :, channelMask]
+    # channels = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8']
 
 
     # ## ----------------------------------------------------------------------------- Covariances
@@ -85,14 +96,14 @@ def main(filter_order=2, windowsLength=1, classes=None):
         print(' - Recentering covariance matrices around eye')
         covs_centered = center_covariances(covs, mean_cov, inv_sqrt_mean_cov)
         
-    counter = 0
-    for i in range(covs_centered.shape[1]):
-        eigenvalues = np.linalg.eigvalsh(covs_centered[:,i])
-        if np.any(eigenvalues <= 0):
-            counter += 1
-            print(f'   ! Covariance matrix {i} is not full rank. Eigenvalues: {eigenvalues}')
-    if counter>0: print(f' - Warning: {counter} covariance matrices are not full rank of a total of {covs_centered.shape[1]}.')
-    if not (is_sym_pos_def(covs_centered[:,fdbVector])): raise ValueError('Covariance matrices are not symmetric positive definite')
+
+    # if not (is_sym_pos_def(covs_centered[:,fdbVector])): 
+    if not (is_sym_pos_def(covs_centered)): 
+        counter = 0
+        for i in range(covs_centered.shape[1]):
+            eigenvalues = np.linalg.eigvalsh(covs_centered[:,i])
+            if np.any(eigenvalues <= 0):    counter += 1
+        raise ValueError(f' -ERROR : {counter} covariance matrices are not full rank of a total of {covs_centered.shape[1]}.')
 
     
     # ## ----------------------------------------------------------------------------- Fitting models
@@ -101,7 +112,7 @@ def main(filter_order=2, windowsLength=1, classes=None):
     
     print(' - Training models')
     fgmdm = FgMDM(njobs=-1)
-    fgmdm.train(covs_centered, labelVector, classes)
+    fgmdm.train(covs_centered, labelVector, classes, rejectionTh=rejectionThreshold)
 
     model = {
         'fgmdm': fgmdm,
@@ -116,7 +127,8 @@ def main(filter_order=2, windowsLength=1, classes=None):
         'classes': classes,
         'channels': channels,
         'trainFiles': fileNames,
-        'laplacian': laplacian
+        'laplacian': laplacian,
+        'rejectionTh': rejectionThreshold,
     }
 
     now = datetime.now().strftime("%Y%m%d.%H%M")
