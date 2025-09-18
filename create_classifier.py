@@ -23,7 +23,7 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
 
     rejectionThreshold = 0.51
 
-    applyLog = True
+    applyLog = False
     doRecenter = False
 
     genPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -36,7 +36,7 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
     print(' - Loading and preprocessing files')
     [signal, events_dataFrame, h, fileNames] = get_files(pathData)
     events_dataFrame.columns = [col.lower() for col in events_dataFrame.columns]
-    channels = h['channels']
+    channels = [ch.replace (" ", "") for ch in h['channels']]
     fs = h['SampleRate']
     windowsShift = h['dataChunkSize']/fs
     subjectCode = fileNames[0].split('/')[-3]
@@ -110,7 +110,7 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
     covs_centered = covs_centered[:, fdbVector]
     labelVector = labelVector[fdbVector]
     
-    print(' - Training models')
+    print(f' - Training models with {covs_centered.shape}')
     fgmdm = FgMDM(njobs=-1)
     fgmdm.train(covs_centered, labelVector, classes, rejectionTh=rejectionThreshold)
 

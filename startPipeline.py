@@ -1,8 +1,6 @@
 import subprocess, sys, json, socket, os
 from utils.server import get_free_ports, check_free_port
 
-
-
 # ---------------------------------------------------------------------------------------------
 
 useMultiplePc = False
@@ -20,11 +18,11 @@ modelFolder = os.path.join(genPath, "models")
 runType =  "evaluation" # Default run type (e.g., 'calibration', 'evaluation', 'test')
 task = 'mi_lhrh'  # Default task
 
-subjectCode = 'a1'  # Default subject code
+subjectCode = 'me'  # Default subject code
 
 # device = 'UN-2023.07.19'
-device = 'un'  # Default device for testing
-model = 'a1.20250903.1840.mi_lhrh.joblib'  # Default model for testing
+device = 'test'  # Default device for testing
+model = 'me.20250916.1727.mi_lhrh.joblib'  # Default model for testing
 
 alpha = 0.98
 weights = [1] 
@@ -51,10 +49,16 @@ else:
 
 # ---------------------------------------------------------------------------------------------
 
-if device == 'test':    
+if device == 'doubleTest':    
     subjectCode = 'zzRecTest1' if isMain else 'zzRecTest2'  # Default subject code
     alpha = 0.96
     weights = [1,1]
+
+if device == 'test':    
+    subjectCode = 'test' 
+    model = 'modelTest'
+    alpha = 0.96
+    weights = [1]
 
 if runType == 'calibration':   alpha = None
 # ---------------------------------------------------------------------------------------------
@@ -64,6 +68,7 @@ elif 'na' in device.lower():    laplacianPath = f'{genPath}/lapMask16Nautilus.ma
 else:                           laplacianPath = f'{genPath}/lapMask16Nautilus.mat'
 
 lenWindowVisualizer = '10' 
+
 
 # ---------------------------------------------------------------------------------------------
 

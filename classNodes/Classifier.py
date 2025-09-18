@@ -11,6 +11,8 @@ from py_utils.signal_processing import get_covariance_matrix_traceNorm_online
 from riemann_utils.covariances import center_covariance_online
 import keyboard, socket, ast, threading
 import numpy as np
+# from datetime import datetime # for testing
+import time
 
 
 
@@ -20,16 +22,25 @@ class Classifier:
         self.host = host
         self._stopEvent = threading.Event()
 
-        self.classifier_dict = load(modelPath)  if modelPath!='test' else None
-        self.buffer = Buffer((self.classifier_dict['windowsLength']*self.classifier_dict['fs'], len(self.classifier_dict['channels']))) if modelPath!='test' else None
+        self.isTest = 'test' in modelPath.lower()
+
+        self.classifier_dict = load(modelPath)  
+        if self.isTest:   
+            # self.buffer = Buffer((250, 8))
+            cov = np.random.randn(8, 8)
+            self.SPDmatrix = cov @ cov.T + np.eye(8) * 1e-6
+            self.SPDmatrix = self.SPDmatrix[np.newaxis, np.newaxis, :, :]
+        # else:
+        self.buffer = Buffer((self.classifier_dict['windowsLength']*self.classifier_dict['fs'], len(self.classifier_dict['channels'])))
+
         self.classifier = self.classifier_dict['fgmdm'] if modelPath!='test' else None
         self.laplacian = loadmat(laplacianPath)['lapMask'] if laplacianPath and modelPath!='test' else None
         self.rejectionThreshold = self.classifier_dict['rejectionThreshold'] if modelPath!='test' else None
 
-
         self.isMain = get_isMain(host=self.host, managerPort=managerPort)
         self.multiplePC = get_isMultiplePC(host=self.host, managerPort=managerPort)
         self.managerPort = managerPort
+
 
         neededPorts = ['FilteredData', 'InfoDictionary', 'OutputMapper', 'host']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
@@ -69,8 +80,8 @@ class Classifier:
         send_tcp(b'', self.probSock)
         print(f"[{self.name}] Connected to output mapper. Starting classifier loop...")
 
-        if self.classifier is None: self.start_fake_classifier()
-        else:                       self.start_classifier()
+        if self.isTest:     self.start_fake_classifier()
+        else:               self.start_classifier()
         
 
     def start_fake_classifier(self):
@@ -79,16 +90,35 @@ class Classifier:
         if self.isMain: keyboardCommands = ['left', 'right']
         else:           keyboardCommands = ['a', 'd']
 
+        while not self.buffer.isFull:
+            _, matrix = recv_tcp(self.filtSock)
+            self.buffer.add_data(matrix)
+
+        print(f"[{self.name}] Buffer filled. Starting fake classification...")
+
+        # qw = 0
         while not self._stopEvent.is_set():
             try:
-                _, _ = recv_tcp(self.filtSock)
-                prob = np.array([value, 1-value])  # Simulated probabilities
-                send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
+                _ = get_covariance_matrix_traceNorm_online(self.buffer.get_data())
+
+                cov = self.SPDmatrix  
+                # start_time = time.time()
+                _ = self.classifier.predict_probabilities(cov)
+                # elapsed_time = time.time() - start_time
+                # print(f'- Iteration {qw} | Time: {elapsed_time:.4f}s')
+                # qw += 1
 
                 if keyboard.is_pressed(keyboardCommands[0]):         value += step
                 elif keyboard.is_pressed(keyboardCommands[1]):       value -= step
                 else: value= 0.5  
+
                 value = np.clip(value, 0, 1) 
+                prob = np.array([value, 1-value])  # Simulated probabilities
+
+                send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
+                _, matrix = recv_tcp(self.filtSock)
+                self.buffer.add_data(matrix)
+                
             except Exception as e:
                 if not not self._stopEvent.is_set():   print(f"[{self.name}] Data processing error: {e}")
                 break
@@ -101,7 +131,6 @@ class Classifier:
         channelMask = get_channelsMask(self.classifier_dict['channels'], self.info['channels'])
       
         message = 'FILTERS'
-        # print(f"[{self.name}] SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA {self.classifier_dict['bandPass']}.")
         if self.classifier_dict['bandPass']:
             hp = self.classifier_dict['bandPass'][0][0]
             lp = self.classifier_dict['bandPass'][0][1]
@@ -119,22 +148,49 @@ class Classifier:
         while not self.buffer.isFull:
             _, matrix = recv_tcp(self.filtSock)
             # if self.laplacian is not None:  matrix = matrix @ self.laplacian
-            # print(f"[{self.name}] AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA {matrix[:, channelMask].shape}")
             self.buffer.add_data(matrix[:, channelMask])
 
+        # print(f"||||||||||||||| [{self.name}]  BUFFER FULLLLLLLLLL: {matrix[0,0]}") # For testing
+        
         while not self._stopEvent.is_set():
             try:
-                cov = get_covariance_matrix_traceNorm_online(self.buffer.data)
+                # kk = time.time()
+                cov = get_covariance_matrix_traceNorm_online(self.buffer.get_data())
                 if self.classifier_dict['inv_sqrt_mean_cov'] is not None:
                     cov = center_covariance_online(cov, self.classifier_dict['inv_sqrt_mean_cov'])
-                if not (is_sym_pos_def(cov)): print(f"[!!!][{self.name}] Covariance matrix is not SPD")
+                if not (is_sym_pos_def(cov)): 
+                    print(f"[!!!][{self.name}] Covariance matrix is not SPD")  # for testing
+                    # cov = self.matrixTest  
+                # kk_cov = time.time()
+                # print(f" -- [{self.name}] Time for covariance: {kk_cov-kk}")  # for testing
+
                 prob = self.classifier.predict_probabilities(cov)
+                # kk_pred = time.time()
+                # print(f" ---- [{self.name}] Time for prediction: {kk_pred-kk_cov}")  # for testing
+
                 prob = prob[0][0]
                 if self.rejectionThreshold is not None and np.max(prob)<self.rejectionThreshold:   
-                    send_tcp(f'PROB/{np.nan}/{np.nan}', self.probSock)
+                    # print(f"[{self.name}] Probabilities: {[np.nan, np.nan]} (rejected)") # for testing
+                    send_tcp(f'PROB/{np.nan}/{np.nan}', self.probSock) # for testing
+                    # pass # for testing
                 else:  
-                    send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
+                    # print(f"[{self.name}] Probabilities: {prob} (rejected)") # for testing
+                    send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock) # for testing
+                    # pass # for testing
+                # print(f" ------ [{self.name}] Time for sends: {time.time()-kk_pred}")  # for testing
+                # print(f"||||||||||||||| [{self.name}] probabilities: {self.buffer.get_data()[0,0]}")
+                # if self.buffer.get_data()[0,0] % 50 == 0:  # for testing
+                #     aa = datetime.now().strftime("%H:%M:%S.%f") # for testing
+                #     print(f" ---- [{self.name}] Sending {self.buffer.get_data()[0,0]} chunks at {aa}.") # for testing
+                # send_tcp(f'PROB/{self.buffer.get_data()[0,0]}/{self.buffer.get_data()[0,0]}', self.probSock) # for testing
+
                 _, matrix = recv_tcp(self.filtSock)
+                # if matrix[0,0] % 50 == 0:  # for testing
+                #     aa = datetime.now().strftime("%H:%M:%S.%f") # for testing
+                #     print(f" ------ [{self.name}] Received {matrix[0,0]} chunks at {aa}.") # for testing
+
+                # print(f"||||||||||||||| [{self.name}]  matrix: {matrix[0,0]}") # For testing
+
                 # if self.laplacian is not None:  matrix = matrix @ self.laplacian
                 self.buffer.add_data(matrix[:, channelMask])
 

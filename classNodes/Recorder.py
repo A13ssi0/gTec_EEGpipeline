@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 class Recorder:
     def __init__(self, managerPort=25798, subjectCode='noName', recFolder='', runType= '', task='', host='127.0.0.1'):
-        self.filePath = f'{recFolder}{subjectCode}'
+        self.filePath = os.path.join(recFolder, subjectCode)
         if not os.path.exists(self.filePath):   os.makedirs(self.filePath)
 
         today = datetime.now().strftime("%Y%m%d")

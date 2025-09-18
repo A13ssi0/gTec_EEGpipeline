@@ -12,10 +12,7 @@ from riemann_utils.covariances import get_riemann_mean_covariance, center_covari
 from pyriemann.utils.base import invsqrtm
 
 
-def extract_coupleWeights(subjects, gammaMI=0, gammaRest=0, classes=None, doSave=True):
-
-    if classes is None:
-        classes = [773, 771]
+def extract_coupleWeights(subjects, gammaMI=0, gammaRest=0, doSave=True):
 
     # Load datasets and process them    
     genPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
@@ -23,8 +20,7 @@ def extract_coupleWeights(subjects, gammaMI=0, gammaRest=0, classes=None, doSave
     recordingsPath = os.path.join(genPath, 'recordings')
     modelsPath = os.path.join(genPath, 'models')
 
-    doSyncronization = False
-    probabilities, events, string_subject = loadProcess_datasets(subjects, recordingsPath, modelsPath, doSyncronization)
+    _, probabilities, events, _ = loadProcess_datasets(subjects, recordingsPath, modelsPath)
 
     # Variables for calc weights
     doLengthNormalization = True
@@ -78,27 +74,26 @@ def extract_coupleWeights(subjects, gammaMI=0, gammaRest=0, classes=None, doSave
         np.savez(f'{savePath}{sbj_name}.fusion_weights.{nowString}.npz', weights=weights)
 
 
-def loadProcess_datasets(subjects, recordingsPath, modelsPath, do_synchronization):
+def loadProcess_datasets(subjects, recordingsPath, modelsPath, do_synchronization=True):
     # Load n number of datasets (n=len(subjects)), apply bci pipeline and if setted the flag, synchronize them
 
     # Load datasets and process them
     n_subjects = len(subjects)
 
-    probabilities = [None] * n_subjects
-    integrated_prob = [None] * n_subjects
-    events = [None] * n_subjects
-    string_subject = [None] * n_subjects
+    probabilities = np.empty(n_subjects, dtype=object)
+    integrated_prob =  np.empty(n_subjects, dtype=object)
+    events = np.empty(n_subjects, dtype=object)
+
 
     for i in range(n_subjects):
         recPath = os.path.join(recordingsPath, subjects[i])
         modpath = os.path.join(modelsPath, subjects[i])
-        integrated_prob[i], probabilities[i], events[i], alpha, rejection, string_subject[i] = pipeline_bci(recPath, modpath)
+        integrated_prob[i], probabilities[i], events[i], alpha = pipeline_bci(recPath, modpath)
 
     # Synchronize probabilities
-    if do_synchronization:
-        probabilities, events = synchronize_datasets(probabilities, events)
+    if do_synchronization:      probabilities, events = synchronize_datasets(probabilities, events)
 
-    return integrated_prob, probabilities, events, alpha, rejection, string_subject
+    return integrated_prob, probabilities, events, alpha
 
 
 
@@ -107,19 +102,17 @@ def pipeline_bci(recPath, modelPath, alpha=0.96):
     # Load files
     root = tk.Tk()
     selectedFiles = filedialog.askopenfilenames(initialdir=recPath, title='Select MAT files', filetypes=[('MAT files', '*.mat')])
-    selectedModel = filedialog.askopenfilename(initialdir=modelPath, title='Select Model file', filetypes=[('Model files', '*.joblib')])
+    selectedModel = filedialog.askopenfilename(initialdir=modelPath, title='Select Model file', filetypes=[('Model files', '*.joblib')], multiple=False)
     root.destroy()
 
-    [signal, events_dataFrame, h, fileNames] = get_files(selectedFiles)
+    signal, events_dataFrame, h, _ = get_files(selectedFiles)
 
     if hasattr(h, 'alpha'):     alpha = h.alpha
     else:                       print(' - Pipeline informations not found. Alpha sets to default (0.96)')
        
-    
     modelDictionary = loadmat(os.path.join(modelPath, selectedModel))
     model = modelDictionary['fgmdm']
     fs = modelDictionary['fs']
-    laplacian = modelDictionary['laplacian']
     bandPass = modelDictionary['bandPass']
     stopBand = modelDictionary['stopBand']
     filter_order = modelDictionary['filter_order']
@@ -139,11 +132,11 @@ def pipeline_bci(recPath, modelPath, alpha=0.96):
 
     # if applyLog: filt_signal = utils.get_logpower(filt, fs)  # da sistemare ----------------------------------------------------------------------------------
 
-    lap_signal = filt_signal @ laplacian
+    lap_signal = filt_signal @ modelDictionary['laplacian']
 
     # ## -----------------------------------------------------------------------------    
     wantedChannels = modelDictionary['channels']
-    [signal, channels] = select_channels(signal, wantedChannels, actualChannels=channels)
+    [lap_signal, _] = select_channels(lap_signal, wantedChannels, actualChannels=h['channels'])
 
     # ## ----------------------------------------------------------------------------- Covariances
     [covs, cov_events] = get_trNorm_covariance_matrix(lap_signal, events_dataFrame, windowsLength, windowsShift, fs)
@@ -161,12 +154,10 @@ def pipeline_bci(recPath, modelPath, alpha=0.96):
 
     probabilities = model.predict_probabilities(covs_centered)
     print(' - Covariance Matrices and classification evaluated')
-
     # INTEGRATIONS
     probabilities_integrated = probabilities_integration(probabilities, alpha, cov_events)
     print(' - Probabilities integrated')
-
-    return probabilities_integrated, probabilities, cov_events, alpha, string_subject
+    return probabilities_integrated, probabilities, cov_events, alpha
 
 
 def probabilities_integration(data, alpha, events):

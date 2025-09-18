@@ -13,7 +13,7 @@ import threading, keyboard
 modelPath = sys.argv[1]
 managerPort = int(sys.argv[2]) 
 laplacianPath = sys.argv[3] if len(sys.argv) > 3 else None
-if modelPath.endswith('test'): modelPath = 'test'
+# if modelPath.endswith('test'): modelPath = 'test'
 
 stop_event = threading.Event()
 def on_hotkey():    stop_event.set()

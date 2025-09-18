@@ -1,6 +1,7 @@
 import socket, ast
 from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, safeClose_socket, get_serversPort
-  
+# import numpy as np # For testing
+# from datetime import datetime # For testing
 
 class Filter:
     def __init__(self, managerPort=25798, host='127.0.0.1'):
@@ -23,7 +24,6 @@ class Filter:
 
 
     def run(self):
-        self.Filtered_socket.start()
 
         wait_for_udp_server(self.host, self.InfoDictPort)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
@@ -35,6 +35,8 @@ class Filter:
                 self.info = {}
         print(f"[{self.name}] Received info dictionary")
 
+        self.Filtered_socket.start()
+
         try:
             tcp_sock = wait_for_tcp_server(self.host, self.EEGPort)
             send_tcp(b'', tcp_sock)
@@ -44,11 +46,19 @@ class Filter:
                 try:
                     _, matrix = recv_tcp(tcp_sock)
 
+                    # t_chunk = matrix[0,0] # For testing
+
                     if self.filter: 
                         for filt in self.filter: 
                             # print(f"[{self.name}] Applying filter: {filt}.")
-                            matrix = filt.filter(matrix)
+                            # matrix = filt.filter(matrix)
+                            pass
                 
+                    # matrix = t_chunk * np.ones(matrix.shape)  # For testing
+                    # if matrix[0,0] % 50 == 0: # For testing 
+                    #     aa = datetime.now().strftime("%H:%M:%S.%f")# For testing
+                    #     print(f" ---------  [{self.name}] Filtered {matrix[0,0]} chunks at {aa}.")# For testing
+
                     try:    self.Filtered_socket.broadcast(matrix)
                     except Exception as e:
                         if not self.Filtered_socket._stopEvent.is_set(): print(f"[{self.name}] Broadcast error: {e}")

@@ -126,7 +126,7 @@ class Visualizer:
 
         self.plot = self.win.addPlot()
         self.plot.invertY(True)
-        self.plot.setXRange(0, self.buffer.data.shape[0], padding=0)
+        self.plot.setXRange(0, self.buffer.get_data().shape[0], padding=0)
         self.plot.setYRange(-0.5, self.nChannels-0.5, padding=0)
         self.plot.enableAutoRange(x=False, y=False)
 
@@ -140,7 +140,7 @@ class Visualizer:
 
         self.curves = [
             self.plot.plot(pen=pg.mkPen(color=pg.intColor(i), width=1))
-            for i in range(self.buffer.data.shape[1])
+            for i in range(self.buffer.get_data().shape[1])
         ]
 
         interval = 1000 * self.info['dataChunkSize'] // self.info['SampleRate']
@@ -167,7 +167,7 @@ class Visualizer:
 
 
     def update_plot(self):
-        data = self.buffer.data
+        data = self.buffer.get_data()
         for i, curve in enumerate(self.curves):
             curve.setData(data[:, i]/self.scale + i)
 
