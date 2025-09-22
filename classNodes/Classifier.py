@@ -11,7 +11,7 @@ from py_utils.signal_processing import get_covariance_matrix_traceNorm_online
 from riemann_utils.covariances import center_covariance_online
 import keyboard, socket, ast, threading
 import numpy as np
-# from datetime import datetime # for testing
+from datetime import datetime # for testing
 import time
 
 
@@ -92,9 +92,12 @@ class Classifier:
 
         while not self.buffer.isFull:
             _, matrix = recv_tcp(self.filtSock)
+            # if matrix[0,0] % 50 == 0: # For testing 
+            #     previous = datetime.now()
+            #     aa = previous.strftime("%H:%M:%S.%f")# For testing
+            #     print(f" ------  Received {matrix[0,0]} chunks at {aa}.")# For testing
             self.buffer.add_data(matrix)
-
-        print(f"[{self.name}] Buffer filled. Starting fake classification...")
+        # print(f"[{self.name}] Buffer filled. Starting fake classification...")
 
         # qw = 0
         while not self._stopEvent.is_set():
@@ -107,6 +110,13 @@ class Classifier:
                 # elapsed_time = time.time() - start_time
                 # print(f'- Iteration {qw} | Time: {elapsed_time:.4f}s')
                 # qw += 1
+                # if matrix[0,0] % 50 == 0: # For testing 
+                #     now = datetime.now()# For testing
+                #     # difference = now - previous
+                #     # Get the total seconds
+                #     # seconds = difference.total_seconds()
+                #     aa = now.strftime("%H:%M:%S.%f")
+                #     print(f" --- [{self.isMain}] Classified {matrix[0,0]} chunks at {aa}")# [ds={seconds};Hz={1/seconds}].")# For testing
 
                 if keyboard.is_pressed(keyboardCommands[0]):         value += step
                 elif keyboard.is_pressed(keyboardCommands[1]):       value -= step
@@ -115,8 +125,16 @@ class Classifier:
                 value = np.clip(value, 0, 1) 
                 prob = np.array([value, 1-value])  # Simulated probabilities
 
+                # value = matrix[0,0] if self.isMain else -matrix[0,0]
+                # prob = np.array([value, value])
+
                 send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
+
                 _, matrix = recv_tcp(self.filtSock)
+                # if matrix[0,0] % 50 == 0: # For testing 
+                #     previous = datetime.now()
+                #     aa = previous.strftime("%H:%M:%S.%f")# For testing
+                #     print(f" ------  Received {matrix[0,0]} chunks at {aa}.")# For testing
                 self.buffer.add_data(matrix)
                 
             except Exception as e:

@@ -3,9 +3,10 @@ import pygds, time, UnicornPy
 from utils.server import  UDPServer, TCPServer, safeClose_socket, get_serversPort
 from scipy.io import loadmat
 from py_utils.data_managment import fix_mat
-# from datetime import datetime # for testing
+# for testing
 import os
 from scipy.io import savemat
+from datetime import datetime
 
 
 class Acquisition:
@@ -53,6 +54,9 @@ class Acquisition:
         while not self.EEG_socket._stopEvent.is_set():
             data = count * np.ones((self.info['dataChunkSize'], n_channels), dtype=np.float32)
             self.data_callback(data)
+            # if data[0,0] % 50 == 0: # For testing 
+            #         aa = datetime.now().strftime("%H:%M:%S.%f")# For testing
+            #         print(f" ---------- Sending {data[0,0]} chunks at {aa}.")# For testing
             time.sleep(sleep_time)
             count += 1
 

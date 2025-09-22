@@ -21,7 +21,7 @@ task = 'mi_lhrh'  # Default task
 subjectCode = 'me'  # Default subject code
 
 # device = 'UN-2023.07.19'
-device = 'test'  # Default device for testing
+device = 'test'  # un na test doubleTest
 model = 'me.20250916.1727.mi_lhrh.joblib'  # Default model for testing
 
 alpha = 0.98
@@ -49,16 +49,19 @@ else:
 
 # ---------------------------------------------------------------------------------------------
 
-if device == 'doubleTest':    
-    subjectCode = 'zzRecTest1' if isMain else 'zzRecTest2'  # Default subject code
-    alpha = 0.96
-    weights = [1,1]
-
 if device == 'test':    
     subjectCode = 'test' 
     model = 'modelTest'
     alpha = 0.96
     weights = [1]
+
+if device == 'doubleTest':    
+    # subjectCode = 'zzRecTest1' if isMain else 'zzRecTest2'  # Default subject code
+    subjectCode = 'test' 
+    device = 'test'
+    model = 'modelTest'
+    alpha = 0.96
+    weights = [1,1]
 
 if runType == 'calibration':   alpha = None
 # ---------------------------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import socket, ast
 from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, safeClose_socket, get_serversPort
-# import numpy as np # For testing
-# from datetime import datetime # For testing
+import numpy as np # For testing
+from datetime import datetime # For testing
 
 class Filter:
     def __init__(self, managerPort=25798, host='127.0.0.1'):
@@ -50,9 +50,9 @@ class Filter:
 
                     if self.filter: 
                         for filt in self.filter: 
-                            # print(f"[{self.name}] Applying filter: {filt}.")
-                            # matrix = filt.filter(matrix)
-                            pass
+                            print(f"[{self.name}] Applying filter: {filt}.")
+                            matrix = filt.filter(matrix)
+                            
                 
                     # matrix = t_chunk * np.ones(matrix.shape)  # For testing
                     # if matrix[0,0] % 50 == 0: # For testing 

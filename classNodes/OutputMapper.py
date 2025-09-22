@@ -1,6 +1,6 @@
 from utils.server import TCPServer, UDPServer, safeClose_socket, get_serversPort, get_isMultiplePC, wait_for_tcp_server, send_tcp
 import threading, time, numpy as np
-# from datetime import datetime # for testing
+from datetime import datetime # for testing
 
 class OutputMapper:
     def __init__(self, managerPort=25798, weights=[1], alpha=0.96, host='127.0.0.1'):
@@ -50,6 +50,10 @@ class OutputMapper:
                     probabilities = np.array([prob['values'] for prob in self.probabilities])
                     weighted_avg = self.nanweighted_avg(probabilities, self.weights, axis=0)
 
+                    # if probabilities[0][0] % 50 == 0: # For testing 
+                    #     aa = datetime.now().strftime("%H:%M:%S.%f")# For testing
+                    #     print(f" -- Mapping {probabilities[0][0]} and {probabilities[1][0]} chunks at {aa}.")# For testing
+
                     if not np.isnan(weighted_avg).any():
                     # if True:    # for testing
                         if weighted_avg[0] != weighted_avg[1]: weighted_probabilities = np.array([1, 0]) if weighted_avg[0] > weighted_avg[1] else np.array([0, 1])
@@ -61,6 +65,7 @@ class OutputMapper:
                         #     print(f" -- [{self.name}] {probabilities[0][0]} chunks at {aa}.") # for testing
                         # print(f"[{self.name}] Probabilities: {[np.nan, np.nan]} (rejected)") # for testing
 
+                        # print(f"[{self.name}] PERCPOSX: {self.percPosX}") # for testing
                         self.PercX_socket.broadcast(self.percPosX)
 
                     # if count%25==0: 
