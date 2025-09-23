@@ -10,12 +10,12 @@ from datetime import datetime
 
 
 class Acquisition:
-    def __init__(self, device=None, managerPort=25798, alpha=None, host='127.0.0.1'):
+    def __init__(self, device=None, managerPort=25798, host='127.0.0.1'):
         self.name = 'Acquisition'
         self.nSamples = 0
         self.device = device
         self.host = host
-        self.info = {'alpha': alpha} if alpha is not None else {}
+        self.info = {}
 
         # self.file = open(r"C:\Users\aless\Desktop\gNautilus\data\recordings\acq_data.txt", "w")
 

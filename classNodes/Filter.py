@@ -39,7 +39,6 @@ class Filter:
 
         try:
             tcp_sock = wait_for_tcp_server(self.host, self.EEGPort)
-            send_tcp(b'', tcp_sock)
             print(f"[{self.name}] Connected to data source. Starting filter loop...")
 
             while not self.Filtered_socket._stopEvent.is_set():

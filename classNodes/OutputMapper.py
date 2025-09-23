@@ -13,7 +13,7 @@ class OutputMapper:
         self.percPosX = 0.5 
         self.new_data_event = threading.Event()
 
-        neededPorts = ['OutputMapper', 'PercPosX', 'host']
+        neededPorts = ['OutputMapper', 'PercPosX', 'host', 'EventBus']
         self.init_sockets(managerPort=managerPort, neededPorts=neededPorts)
 
         if len(self.weights) > 2 :  Warning(f"[{self.name}] Warning: More than 2 weights provided, this may lead to unexpected behavior on the mapper output. It is recommended to use maximum 2 classes.") 
@@ -28,6 +28,12 @@ class OutputMapper:
 
         self.Prob_socket = TCPServer(host=self.host, port=portDict['OutputMapper'], serverName=self.name, node=self)
         self.PercX_socket = UDPServer(host=self.host, port=portDict['PercPosX'], serverName=self.name, node=self)
+
+        sock = wait_for_tcp_server(self.host, portDict['EventBus'])
+        data = {'alpha': self.alpha, 'weights': self.weights.tolist()}
+        message = f'ADD_INFO/{data}'
+        send_tcp(message, sock)
+
 
     def run(self):
         self.Prob_socket.start()

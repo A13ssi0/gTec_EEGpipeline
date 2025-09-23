@@ -8,14 +8,12 @@ useMultiplePc = False
 portMain = 25798  
 genPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
-# recFolder = f'{genPath}/recordings/'
 recFolder = os.path.join(genPath, "recordings")
-# modelFolder = f'{genPath}/models/'  # Path to the model
 modelFolder = os.path.join(genPath, "models")
 
 
 
-runType =  "evaluation" # Default run type (e.g., 'calibration', 'evaluation', 'test')
+runType =  "test" # Default run type (e.g., 'calibration', 'evaluation', 'test')
 task = 'mi_lhrh'  # Default task
 
 subjectCode = 'me'  # Default subject code
@@ -26,6 +24,10 @@ model = 'me.20250916.1727.mi_lhrh.joblib'  # Default model for testing
 
 alpha = 0.98
 weights = [1] 
+
+
+
+
 
 # ---------------------------------------------------------------------------------------------
 
@@ -100,7 +102,7 @@ if useMultiplePc and not isMain:
 # ---------------------------------------------------------------------------------------------
 
 subprocess.Popen([sys.executable, "classLaunchers\launchPortManager.py", portManagerPort, json.dumps(portDict), str(isMain), str(useMultiplePc)]) # F1
-subprocess.Popen([sys.executable, "classLaunchers\launchAcquisition.py", device, portManagerPort, str(alpha)])  # F2
+subprocess.Popen([sys.executable, "classLaunchers\launchAcquisition.py", device, portManagerPort])  # F2
 subprocess.Popen([sys.executable, "classLaunchers\launchRecorder.py", portManagerPort, subjectCode, recFolder, runType, task]) # F5
 if runType == 'evaluation' or runType == 'test': 
     path = os.path.join(modelFolder,subjectCode,model)

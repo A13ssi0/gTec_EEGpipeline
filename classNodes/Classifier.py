@@ -77,7 +77,6 @@ class Classifier:
         else:                                       IPAddrMain = self.host
 
         self.probSock = wait_for_tcp_server(IPAddrMain, self.MapperPort)
-        send_tcp(b'', self.probSock)
         print(f"[{self.name}] Connected to output mapper. Starting classifier loop...")
 
         if self.isTest:     self.start_fake_classifier()

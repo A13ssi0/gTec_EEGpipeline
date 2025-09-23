@@ -22,6 +22,7 @@ class Recorder:
         self.fileEvents = open(f"{self.filePath}_events.txt", "w")
         self.host = host
         self.name = 'Recorder'
+        # self.isReady = False
 
         neededPorts = ['InfoDictionary', 'EEGData', 'EventBus', 'host']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
@@ -42,8 +43,8 @@ class Recorder:
         self.EEGPort = portDict['EEGData']
         self.event_socket = TCPServer(host=eventsIP, port=portDict['EventBus'], serverName='EventBus', node=self)
 
+
     def run(self):
-        self.event_socket.start()
         wait_for_udp_server(self.host, self.InfoDictPort)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
             send_udp(udp_sock, (self.host,self.InfoDictPort), "GET_INFO")
@@ -54,9 +55,10 @@ class Recorder:
                 self.info = {}
 
         print(f"[{self.name}] Received info dictionary")
+        self.event_socket.start()
+        # self.isReady = True
 
         sock = wait_for_tcp_server(self.host, self.EEGPort)
-        send_tcp(b'', sock)
         print(f"[{self.name}] Connected. Waiting for data...")
         print(f"[{self.name}] Starting the recording")
         try:

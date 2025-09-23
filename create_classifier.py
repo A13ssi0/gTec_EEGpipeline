@@ -4,8 +4,8 @@ from fgmdm_riemann.fgmdm_riemann import FgMDM
 import numpy as np
 from pyriemann.utils.base import invsqrtm
 from pyriemann.utils.test import is_sym_pos_def
-from scipy.io import loadmat
-from py_utils.signal_processing import get_bandranges, get_trNorm_covariance_matrix
+from scipy.io import loadmat, savemat
+from py_utils.signal_processing import get_bandranges, get_trNorm_covariance_matrix, logbandpower
 from py_utils.data_managment import get_files, save
 from py_utils.eeg_managment import select_channels,get_EventsVector_onFeedback,get_channelsMask
 from riemann_utils.covariances import get_riemann_mean_covariance, center_covariances
@@ -28,8 +28,10 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
 
     genPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
-    pathData = f'{genPath}/recordings/'
-    pathModels = f'{genPath}/models/' 
+    pathData = os.path.join(genPath,'recordings')
+    pathModels = os.path.join(genPath,'models')
+
+    logWindowLength = 1
 
 
     ## -----------------------------------------------------------------------------
@@ -49,42 +51,43 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
         if classes is None: classes = [769, 770]
 
 
+    #-------------------------------------------------------------------------------
+    laplacian = np.eye(signal.shape[-1])
+    if applyLaplacian:
+        pathLaplacian = None
+        print(' - Applying Laplacian')   
+        if h['device'].startswith('NA'):    pathLaplacian = os.path.join(pathData, 'lapMask16Nautilus.mat')
+        elif h['device'].startswith('UN'):  pathLaplacian = os.path.join(pathData, 'lapMask8Unicorn.mat')
+
+        if pathLaplacian is not None :
+            laplacian = loadmat(pathLaplacian)
+            laplacian = laplacian['lapMask']
+        else:           
+            print(f" - WARNING: Device {h['device']} not recognized. No Laplacian will be applied.")                    
+               
+    
+    lap_signal = signal @ laplacian
+   
+
     # ## ----------------------------------------------------------------------------- Processing Train
-    # filters = [ [] for _ in range(max(len(bandPass), len(stopBand))) ]
-    # for k,band in enumerate(bandPass):  filters[k].append(RealTimeButterFilter(order=filter_order, cutoff=band, fs=fs, type='bandpass'))
-    # for k,band in enumerate(stopBand): filters[k].append(RealTimeButterFilter(order=filter_order, cutoff=band, fs=fs, type='bandstop'))
-    filt_signal = signal
+    filt_signal = lap_signal
     if len(bandPass)>0: filt_signal = get_bandranges(filt_signal, bandPass, fs, filter_order, 'bandpass')
     if len(stopBand)>0: filt_signal = get_bandranges(filt_signal, stopBand, fs, filter_order, 'bandstop')
 
-    # if applyLog: filt_signal = utils.get_logpower(filt, fs)  # da sistemare ----------------------------------------------------------------------------------
+    if applyLog: filt_signal = logbandpower(filt_signal, fs, slidingWindowLength=logWindowLength)  
 
-
-    #-------------------------------------------------------------------------------
-    if applyLaplacian:
-        print(' - Applying Laplacian')   
-        # if 'na' in h['device'].lower(): pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
-        # elif 'un' in h['device'].lower(): pathLaplacian = f'c{genPath}/lapMask8Unicorn.mat'
-        # else: pathLaplacian = f'{genPath}/lapMask16Nautilus.mat'
-        pathLaplacian = f'{genPath}/lapMask8Unicorn.mat'
-
-        laplacian = loadmat(pathLaplacian)
-        laplacian = laplacian['lapMask']
-        lap_signal = filt_signal @ laplacian
-    else:
-        lap_signal = filt_signal
-        laplacian = np.eye(filt_signal.shape[-1])
 
 
     # ## -----------------------------------------------------------------------------    
     wantedChannels = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8']
+    # wantedChannels = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'O1', 'Oz', 'O2']
     channelMask = get_channelsMask(wantedChannels, channels)
-    lap_signal = lap_signal[:, :, channelMask]
+    filt_signal = filt_signal[:, :, channelMask]
     # channels = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8']
 
 
     # ## ----------------------------------------------------------------------------- Covariances
-    [covs, cov_events] = get_trNorm_covariance_matrix(lap_signal, events_dataFrame, windowsLength, windowsShift, fs)
+    [covs, cov_events] = get_trNorm_covariance_matrix(filt_signal, events_dataFrame, windowsLength, windowsShift, fs)
     labelVector = get_EventsVector_onFeedback(cov_events, covs.shape[1], classes)
     fdbVector = np.isin(labelVector, classes)
 
@@ -116,19 +119,21 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
 
     model = {
         'fgmdm': fgmdm,
-        'mean_cov': mean_cov if doRecenter else None,
+        'mean_cov': mean_cov if doRecenter else [],
         'bandPass': bandPass,
         'stopBand': stopBand,
         'fs': fs,
         'filter_order': filter_order,
         'windowsLength': windowsLength,
         'windowsShift': windowsShift,
-        'inv_sqrt_mean_cov': inv_sqrt_mean_cov if doRecenter else None,
+        'inv_sqrt_mean_cov': inv_sqrt_mean_cov if doRecenter else [],
         'classes': classes,
         'channels': channels,
         'trainFiles': fileNames,
         'laplacian': laplacian,
         'rejectionThreshold': rejectionThreshold,
+        'applyLog': applyLog,
+        'logWindowLength': logWindowLength,
     }
 
     now = datetime.now().strftime("%Y%m%d.%H%M")
@@ -141,7 +146,8 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
         print(f"Warning: Files starting with {subjectCode}.{now}.{task} already exist. Adding a suffix to avoid overwriting.")
         filename += f'.{len(existing_files)}'
 
-    save(filename, model)
+    savemat(f'{filename}.mat', model)
+    # save(filename, model)
     
 
 if __name__ == '__main__':

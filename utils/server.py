@@ -208,6 +208,7 @@ class TCPClientHandler(threading.Thread):
                 elif 'FILTERS' in msg:    self.manage_filters(msg)
                 elif msg.startswith('PROB'): self.manage_probabilities(ts,msg)
                 elif 'INFO' in msg: self.manage_info(msg)
+                elif 'READY' == msg: self.manage_ready()
 
         except Exception as e:
             if not self._stopEvent.is_set():    print(f"[{self.server.serverName}] Client error {self.addr}: {e}")
@@ -215,6 +216,10 @@ class TCPClientHandler(threading.Thread):
             try:    self.server.remove_client(self.conn)
             except: pass
             self.safe_close()
+
+    def manage_ready(self):
+        if hasattr(self.server.node, 'isReady'):    send_tcp(self.server.node.isReady, self.conn)
+        else:                                       send_tcp(True, self.conn)
 
     def safe_close(self):
         try:    self.conn.shutdown(socket.SHUT_RDWR)
@@ -224,7 +229,7 @@ class TCPClientHandler(threading.Thread):
 
     def manage_info(self, msg):
         msg = msg.split('/')
-        print(f"[{self.server.serverName}] Managing info message: {msg}")
+        # print(f"[{self.server.serverName}] Managing info message: {msg}")
         msg[1] = ast.literal_eval(msg[1]) if isinstance(msg[1], str) and msg[1].startswith('{') else msg[1]
         try:
             if msg[0] == 'ADD_INFO':
@@ -344,6 +349,8 @@ def send_tcp(message, sock=None):
         payload = message
     elif isinstance(message, str):
         payload = message.encode('utf-8')
+    elif isinstance(message, bool):
+        payload = str(message).encode('utf-8')
     else:
         raise TypeError("Message must be a NumPy array, bytes or string")
 
@@ -394,11 +401,14 @@ def wait_for_tcp_server(host, port, timeout=10):
     deadline = time.time() + timeout
     while time.time() < deadline:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
+        sock.settimeout(3)
         try:
             sock.connect((host, port))
-            # send_tcp(b'PING', sock)  # Send a test message
-            # sock.close()
+            send_tcp(b'', sock) 
+            send_tcp(b'READY', sock) 
+            while not bool(recv_tcp(sock)[1]):  
+                time.sleep(0.3)
+                send_tcp(b'READY', sock) 
             return sock
         except (ConnectionRefusedError, socket.timeout):
             time.sleep(0.1)
