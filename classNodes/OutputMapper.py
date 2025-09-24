@@ -1,4 +1,5 @@
-from utils.server import TCPServer, UDPServer, safeClose_socket, get_serversPort, get_isMultiplePC, wait_for_tcp_server, send_tcp
+import socket
+from utils.server import TCPServer, UDPServer, safeClose_socket, get_serversPort, get_isMultiplePC, wait_for_tcp_server, send_tcp, recv_tcp
 import threading, time, numpy as np
 from datetime import datetime # for testing
 
@@ -12,6 +13,7 @@ class OutputMapper:
         self.alpha = alpha
         self.percPosX = 0.5 
         self.new_data_event = threading.Event()
+        self.reset_event = threading.Event()
 
         neededPorts = ['OutputMapper', 'PercPosX', 'host', 'EventBus']
         self.init_sockets(managerPort=managerPort, neededPorts=neededPorts)
@@ -29,15 +31,16 @@ class OutputMapper:
         self.Prob_socket = TCPServer(host=self.host, port=portDict['OutputMapper'], serverName=self.name, node=self)
         self.PercX_socket = UDPServer(host=self.host, port=portDict['PercPosX'], serverName=self.name, node=self)
 
-        sock = wait_for_tcp_server(self.host, portDict['EventBus'])
+        self.events = wait_for_tcp_server(self.host, portDict['EventBus'])
         data = {'alpha': self.alpha, 'weights': self.weights.tolist()}
         message = f'ADD_INFO/{data}'
-        send_tcp(message, sock)
+        send_tcp(message, self.events)
 
 
     def run(self):
         self.Prob_socket.start()
         self.PercX_socket.start()
+        threading.Thread(target=self.listen_reset, args=(self.events, self.reset_event), daemon=True).start()
         print(f"[{self.name}] Starting output merging ...")
 
         count = 0
@@ -50,6 +53,14 @@ class OutputMapper:
         try:
             while not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():
                 self.new_data_event.wait(timeout=1.0)
+
+                if self.reset_event.is_set():
+                    # print(f"[{self.name}] Resetting integrated probabilities and weights.")
+                    self.integratedProb = np.full(2, 0.5)
+                    self.percPosX = self.integratedProb[1]
+                    self.PercX_socket.broadcast(self.percPosX)
+                    # print(f"[{self.name}] PERCPOSX: {self.percPosX}") # for testing
+                
 
                 if self.new_data_event.is_set():
                     count += 1
@@ -71,7 +82,9 @@ class OutputMapper:
                         #     print(f" -- [{self.name}] {probabilities[0][0]} chunks at {aa}.") # for testing
                         # print(f"[{self.name}] Probabilities: {[np.nan, np.nan]} (rejected)") # for testing
 
-                        # print(f"[{self.name}] PERCPOSX: {self.percPosX}") # for testing
+                       
+                        # print(f"[{self.name}]  WAv:{weighted_avg}, WProb:{weighted_probabilities}, Integrated:{self.integratedProb}, PercPosX:{self.percPosX}") # for testing
+                            
                         self.PercX_socket.broadcast(self.percPosX)
 
                     # if count%25==0: 
@@ -81,7 +94,6 @@ class OutputMapper:
                     for prob in self.probabilities: prob['isNew'] = False
                     self.new_data_event.clear()
 
-
         except Exception as e:
             if not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():   print(f"[{self.name}] Error or disconnected:", e)
 
@@ -90,11 +102,28 @@ class OutputMapper:
         weights[k] =  0
         if (weights==0).all():   return np.array([np.nan, np.nan])
         return np.average(np.nan_to_num(values), axis=axis, weights=weights)
+    
+    def listen_reset(self, sock, reset_event):
+        while not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():
+            try:
+                _, msg = recv_tcp(sock) #sock.recv(1024)
+                # print(f"[{self.name}] Received data from EventBus: {msg}")
+                if "RESET" == msg:
+                    # print(f"[{self.name}] Received RESET command from EventBus.")
+                    reset_event.set()
+                if "START" == msg:
+                    # print(f"[{self.name}] Received START command from EventBus.")
+                    reset_event.clear()
+            except (ConnectionRefusedError, socket.timeout):
+                pass
+            except Exception as e:
+                if not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():   print(f"[{self.name}] Error or disconnected in reset listener:", e)
+                
 
 
     def close(self):
         safeClose_socket(self.Prob_socket, name=self.name)
-        safeClose_socket(self.PercX_socket, name=self.name)
+        safeClose_socket(self.PercX_socket, name=self.name)  
    
 
     def __del__(self):

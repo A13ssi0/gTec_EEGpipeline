@@ -204,7 +204,7 @@ class TCPClientHandler(threading.Thread):
         try:
             while not self._stopEvent.is_set():
                 ts, msg = recv_tcp(self.conn)
-                if msg.startswith('EV'): self.server.node.save_event(ts, msg[2:])
+                if msg.startswith('EV'): self.manage_event(ts, msg[2:])
                 elif 'FILTERS' in msg:    self.manage_filters(msg)
                 elif msg.startswith('PROB'): self.manage_probabilities(ts,msg)
                 elif 'INFO' in msg: self.manage_info(msg)
@@ -216,6 +216,20 @@ class TCPClientHandler(threading.Thread):
             try:    self.server.remove_client(self.conn)
             except: pass
             self.safe_close()
+
+    def manage_event(self, ts, event):
+        self.server.node.save_event(ts, event)
+        if 'doCFreset' in self.server.node.info and self.server.node.info['doCFreset']:
+            if int(event) == 1:
+                for conn in self.server.clients:
+                    # print(f"[{self.server.serverName}] Received reset event {event}. Resetting node.")
+                    send_tcp('RESET', conn)
+            if int(event) == 781:
+                for conn in self.server.clients:
+                    # print(f"[{self.server.serverName}] Received non-reset event {event}.")
+                    send_tcp('START', conn)
+               
+            
 
     def manage_ready(self):
         if hasattr(self.server.node, 'isReady'):    send_tcp(self.server.node.isReady, self.conn)
@@ -233,7 +247,7 @@ class TCPClientHandler(threading.Thread):
         msg[1] = ast.literal_eval(msg[1]) if isinstance(msg[1], str) and msg[1].startswith('{') else msg[1]
         try:
             if msg[0] == 'ADD_INFO':
-                print(f"[{self.server.serverName}] Adding info into : {self.server.node.info}")
+                print(f"[{self.server.serverName}] Adding info : {msg[1].keys()}")
                 for key, value in msg[1].items():
                     if key not in self.server.node.info:   self.server.node.info[key] = value
                     else:   print(f"[{self.server.serverName}] {key} already present with value {self.server.node.info[key]}")
@@ -335,7 +349,8 @@ def recv_tcp(sock):
             return timestamp, matrix
         except Exception:
             return timestamp, payload.decode('utf-8', errors='ignore')
-
+    except socket.timeout:
+        raise
     except Exception as e:
         raise ConnectionError(f"TCP receive failed: {e}")
 

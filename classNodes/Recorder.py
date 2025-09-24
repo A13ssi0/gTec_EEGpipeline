@@ -22,6 +22,7 @@ class Recorder:
         self.fileEvents = open(f"{self.filePath}_events.txt", "w")
         self.host = host
         self.name = 'Recorder'
+        self.doReset = False
         # self.isReady = False
 
         neededPorts = ['InfoDictionary', 'EEGData', 'EventBus', 'host']
