@@ -70,6 +70,7 @@ class Classifier:
         print(f"[{self.name}] Received info dictionary")
 
         self.filtSock = wait_for_tcp_server(self.host, self.FilteredPort)
+        send_tcp(b'', self.filtSock)
         send_tcp(b'FILTERS', self.filtSock)
         print(f"[{self.name}] Connected to data source.")
 
@@ -163,9 +164,15 @@ class Classifier:
             send_tcp(f'{message}{cutHp}{cutLp}/bstop'.encode('utf-8'), self.filtSock)
 
         while not self.buffer.isFull:
-            _, matrix = recv_tcp(self.filtSock)
-            # if self.laplacian is not None:  matrix = matrix @ self.laplacian
-            self.buffer.add_data(matrix[:, channelMask])
+            try:
+                _, matrix = recv_tcp(self.filtSock)
+                # if self.laplacian is not None:  matrix = matrix @ self.laplacian
+                self.buffer.add_data(matrix[:, channelMask])
+            except TimeoutError:
+                continue
+            except Exception as e:
+                print(f"[{self.name}] Data processing error: {e}")
+                       
 
         # print(f"||||||||||||||| [{self.name}]  BUFFER FULLLLLLLLLL: {matrix[0,0]}") # For testing
         
@@ -188,10 +195,14 @@ class Classifier:
                 prob = prob[0][0]
                 if self.rejectionThreshold is not None and np.max(prob)<self.rejectionThreshold:   
                     # print(f"[{self.name}] Probabilities: {[np.nan, np.nan]} (rejected)") # for testing
+                    prob = [0.5, 0.5]
+                    # print(prob)
                     send_tcp(f'PROB/{np.nan}/{np.nan}', self.probSock) # for testing
                     # pass # for testing
                 else:  
                     # print(f"[{self.name}] Probabilities: {prob} (rejected)") # for testing
+                    # print(prob)
+
                     send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock) # for testing
                     # pass # for testing
                 # print(f" ------ [{self.name}] Time for sends: {time.time()-kk_pred}")  # for testing

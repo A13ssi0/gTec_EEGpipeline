@@ -82,8 +82,8 @@ class OutputMapper:
                         #     print(f" -- [{self.name}] {probabilities[0][0]} chunks at {aa}.") # for testing
                         # print(f"[{self.name}] Probabilities: {[np.nan, np.nan]} (rejected)") # for testing
 
+                        
                        
-                        # print(f"[{self.name}]  WAv:{weighted_avg}, WProb:{weighted_probabilities}, Integrated:{self.integratedProb}, PercPosX:{self.percPosX}") # for testing
                             
                         self.PercX_socket.broadcast(self.percPosX)
 
@@ -91,6 +91,7 @@ class OutputMapper:
                     #     print(f"[{self.name}]  WAv:{weighted_avg}, WProb:{weighted_probabilities}, Integrated:{self.integratedProb}, PercPosX:{self.percPosX}, Time:{time.time()-old_timer}, {(time.time()-old_timer)/25}") #Prob:{probabilities},
                     #     old_timer = time.time()
                     # if count%25==0: print(f"[{self.name}] PercPosX:{self.percPosX}") #Prob:{probabilities},
+                    print(f"[{self.name}]  WAv:{weighted_avg}, WProb:{weighted_probabilities}, Integrated:{self.integratedProb}, PercPosX:{self.percPosX}") # for testing
                     for prob in self.probabilities: prob['isNew'] = False
                     self.new_data_event.clear()
 
@@ -98,9 +99,9 @@ class OutputMapper:
             if not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():   print(f"[{self.name}] Error or disconnected:", e)
 
     def nanweighted_avg(self, values, weights, axis=0): 
-        k = [np.any(np.isnan(vl)) for vl in values]
-        weights[k] =  0
-        if (weights==0).all():   return np.array([np.nan, np.nan])
+        # k = [np.any(np.isnan(vl)) for vl in values]
+        # weights[k] =  0
+        # if (weights==0).all():   return np.array([np.nan, np.nan])
         return np.average(np.nan_to_num(values), axis=axis, weights=weights)
     
     def listen_reset(self, sock, reset_event):

@@ -119,14 +119,14 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
 
     model = {
         'fgmdm': fgmdm,
-        'mean_cov': mean_cov if doRecenter else [],
+        'mean_cov': mean_cov if doRecenter else None,
         'bandPass': bandPass,
         'stopBand': stopBand,
         'fs': fs,
         'filter_order': filter_order,
         'windowsLength': windowsLength,
         'windowsShift': windowsShift,
-        'inv_sqrt_mean_cov': inv_sqrt_mean_cov if doRecenter else [],
+        'inv_sqrt_mean_cov': inv_sqrt_mean_cov if doRecenter else None,
         'classes': classes,
         'channels': channels,
         'trainFiles': fileNames,
@@ -146,8 +146,8 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
         print(f"Warning: Files starting with {subjectCode}.{now}.{task} already exist. Adding a suffix to avoid overwriting.")
         filename += f'.{len(existing_files)}'
 
-    savemat(f'{filename}.mat', model)
-    # save(filename, model)
+    # savemat(f'{filename}.joblib', model)
+    save(filename, model)
     
 
 if __name__ == '__main__':

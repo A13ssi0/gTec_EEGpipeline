@@ -49,8 +49,10 @@ class Filter:
 
                     if self.filter: 
                         for filt in self.filter: 
-                            print(f"[{self.name}] Applying filter: {filt}.")
+                            # print(f"[{self.name}] Applying filter: {filt}.")
                             matrix = filt.filter(matrix)
+
+                    # print(f"[{self.name}] Filtered data chunk with shape {matrix.shape}.")  # For testing
                             
                 
                     # matrix = t_chunk * np.ones(matrix.shape)  # For testing
@@ -62,7 +64,8 @@ class Filter:
                     except Exception as e:
                         if not self.Filtered_socket._stopEvent.is_set(): print(f"[{self.name}] Broadcast error: {e}")
                         self.Filtered_socket._stopEvent.set()
-
+                # except TimeoutError:
+                #     continue
                 except Exception as e:
                     if not self.Filtered_socket._stopEvent.is_set():   print(f"[{self.name}] Data processing error: {e}")
                     self.Filtered_socket._stopEvent.set()

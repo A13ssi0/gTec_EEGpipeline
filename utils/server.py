@@ -115,6 +115,7 @@ class TCPServer(threading.Thread):
         self.sock.listen()
         self.clients = []
         self.clients_lock = threading.Lock()
+        self.clients_ready = []
         self._stopEvent = threading.Event()
         self.sock.settimeout(0.5)
         # SERVERS_LIST.append(self)
@@ -350,7 +351,8 @@ def recv_tcp(sock):
         except Exception:
             return timestamp, payload.decode('utf-8', errors='ignore')
     except socket.timeout:
-        raise
+        # pass
+        raise TimeoutError("TCP receive timed out")
     except Exception as e:
         raise ConnectionError(f"TCP receive failed: {e}")
 
@@ -419,11 +421,14 @@ def wait_for_tcp_server(host, port, timeout=10):
         sock.settimeout(3)
         try:
             sock.connect((host, port))
-            send_tcp(b'', sock) 
+            # send_tcp(b'', sock) 
             send_tcp(b'READY', sock) 
-            while not bool(recv_tcp(sock)[1]):  
-                time.sleep(0.3)
-                send_tcp(b'READY', sock) 
+            # msg = recv_tcp(sock)[1]
+            # print(f"{host}:{port} AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA {msg} {msg.shape}")
+            # while not isinstance(msg,str) and bool(msg):  
+            #     time.sleep(0.1)
+            #     send_tcp(b'READY', sock) 
+            #     msg = recv_tcp(sock)[1]
             return sock
         except (ConnectionRefusedError, socket.timeout):
             time.sleep(0.1)
