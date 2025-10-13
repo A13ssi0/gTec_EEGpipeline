@@ -89,18 +89,30 @@ class Acquisition:
 
     def _run_unicorn(self):
         deviceList = UnicornPy.GetAvailableDevices(True)
-        if self.device == 'un' or self.device is None:     self.device = deviceList[0] 
-        self.unicorn = UnicornPy.Unicorn(self.device)
+
+        if self.device == 'un' or self.device is None:     
+            for self.device in deviceList:
+                try:
+                    print(f"[{self.name}] Trying to connect to Unicorn device: {self.device}")
+                    self.unicorn = UnicornPy.Unicorn(self.device)
+                    break
+                except UnicornPy.DeviceException as e:
+                    print(f"[{self.name}] Device not found")
+                except Exception as e:
+                    print(f"[{self.name}] Unexpected error during Unicorn headset connection: {e}")
+                    raise e
+                    
+        print(f"[{self.name}] Using Unicorn device: {self.device}")
         channelIndex = [self.unicorn.GetChannelIndex('EEG '+str(i)) for i in range(1,9)] # from 1 to 8
         numberOfAcquiredChannels= self.unicorn.GetNumberOfAcquiredChannels()
         self.SetUnicornSettings()
         receiveBufferBufferLength = self.info['dataChunkSize'] * numberOfAcquiredChannels * 4
         receiveBuffer = bytearray(receiveBufferBufferLength)
 
-        self.unicorn.StartAcquisition(False)
         print(f"[{self.name}] Starting real acquisition with Unicorn...")
         self.InfoDict_socket.start()
         self.EEG_socket.start()
+        self.unicorn.StartAcquisition(False)
         try:
             # count = 0 # for testing
             while not self.EEG_socket._stopEvent.is_set():

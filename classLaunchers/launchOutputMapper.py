@@ -8,13 +8,13 @@ if parent_dir not in sys.path:
 
 
 from classNodes.OutputMapper import OutputMapper
+import numpy as np
 import threading, keyboard
 
-managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
-weights = sys.argv[2][1:-1].split(',') if len(sys.argv) > 2 else ['1']
-weights = [float(w) for w in weights]
-alpha = float(sys.argv[3]) if len(sys.argv) > 3 else 0.96
 
+managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
+weights = np.array([float(x) for x in sys.argv[2][1:-1].split()]) if len(sys.argv) > 2 else ['1']
+alpha = float(sys.argv[3]) if len(sys.argv) > 3 else 0.96
 
 stop_event = threading.Event()
 def on_hotkey():    stop_event.set()

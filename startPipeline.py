@@ -1,4 +1,6 @@
 import subprocess, sys, json, socket, os
+from scipy.io import loadmat
+from py_utils.data_managment import fix_mat
 from utils.server import get_free_ports, check_free_port
 
 # ---------------------------------------------------------------------------------------------
@@ -10,19 +12,21 @@ genPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 recFolder = os.path.join(genPath, "recordings")
 modelFolder = os.path.join(genPath, "models")
+weightsFolder = os.path.join(genPath, "weights")
 
 
 
-runType =  "test" # Default run type (e.g., 'calibration', 'evaluation', 'test')
+
+runType =  "evaluation" # Default run type (e.g., 'calibration', 'evaluation', 'test')
 task = 'mi_lhrh'  # Default task
 
 subjectCode = 'me'  # Default subject code
 
 # device = 'UN-2023.07.19'
-device = 'test'  # un na test doubleTest
-model = 'me.20250916.1727.mi_lhrh.joblib'  # Default model for testing
+device = 'un'  # un na test doubleTest
+model = 'me.20251008.1737.mi_lhrh.joblib'  # Default model for testing
 
-alpha = 0.98
+alpha = 0.99
 weights = [1] 
 
 
@@ -53,7 +57,7 @@ else:
 
 if device == 'test':    
     subjectCode = 'test' 
-    model = 'modelTest'
+    # model = 'modelTest'
     alpha = 0.96
     weights = [1]
 
@@ -64,6 +68,13 @@ if device == 'doubleTest':
     model = 'modelTest'
     alpha = 0.96
     weights = [1,1]
+
+
+if isinstance(weights, str):  
+    weights = loadmat(os.path.join(weightsFolder, weights))
+    weights = fix_mat(weights['weights'])
+    weights = weights['normalized']['withoutRest']
+
 
 if runType == 'calibration':   alpha = None
 # ---------------------------------------------------------------------------------------------

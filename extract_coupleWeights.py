@@ -35,26 +35,26 @@ def extract_coupleWeights(gammaMI=0, gammaRest=0, doSave=True):
     print('- WEIGHTS -')
 
     print('-- LOSS --')
-    weights = {'loss': {}}
-    weights['loss']['notNormalized'] = {}
-    weights['loss']['normalized'] = {}
+    weights = {'weights': {}}
+    weights['weights']['notNormalized'] = {}
+    weights['weights']['normalized'] = {}
 
-    weights['loss']['notNormalized']['withRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, withRest, notLengthNormalization, gamma)
+    weights['weights']['notNormalized']['withRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, withRest, notLengthNormalization, gamma)
     print(' --- notNormalized.withRest : ')
-    print(weights['loss']['notNormalized']['withRest'])
+    print(weights['weights']['notNormalized']['withRest'])
     
-    weights['loss']['normalized']['withRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, withRest, doLengthNormalization, gamma)
+    weights['weights']['normalized']['withRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, withRest, doLengthNormalization, gamma)
     print(' --- normalized.withRest : ')
-    print(weights['loss']['normalized']['withRest'])
+    print(weights['weights']['normalized']['withRest'])
     
     # Calc weighted average without rest
-    weights['loss']['notNormalized']['withoutRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, noRest, notLengthNormalization, gamma)
+    weights['weights']['notNormalized']['withoutRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, noRest, notLengthNormalization, gamma)
     print(' --- notNormalized.withoutRest : ')
-    print(weights['loss']['notNormalized']['withoutRest'])
+    print(weights['weights']['notNormalized']['withoutRest'])
     
-    weights['loss']['normalized']['withoutRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, noRest, doLengthNormalization, gamma)
+    weights['weights']['normalized']['withoutRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, noRest, doLengthNormalization, gamma)
     print(' --- normalized.withoutRest : ')
-    print(weights['loss']['normalized']['withoutRest'])
+    print(weights['weights']['normalized']['withoutRest'])
 
     # Calc weight with accuracy
     weights['accuracy'] = calc_fusionWeights_accuracy(probabilities, events, classes)
