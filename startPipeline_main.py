@@ -17,17 +17,17 @@ weightsFolder = os.path.join(genPath, "weights")
 
 
 
-runType =  "evaluation" # Default run type (e.g., 'calibration', 'evaluation', 'test')
+runType =  "calibration" # Default run type (e.g., 'calibration', 'evaluation', 'test')
 task = 'mi_lhrh'  # Default task
 
-subjectCode = 'me'  # Default subject code
+subjectCode = 'ro'  # Default subject code
 
 # device = 'UN-2023.07.19'
-device = 'un'  # un na test doubleTest
-model = 'me.20251008.1737.mi_lhrh.joblib'  # Default model for testing
+device = 'UN-2023.07.19'  # un na test doubleTest
+model = 'me.20251015.1544.mi_lhrh.joblib'  # Default model for testing
 
 alpha = 0.99
-weights = [1] 
+weights = [1]
 
 
 
@@ -73,7 +73,7 @@ if device == 'doubleTest':
 if isinstance(weights, str):  
     weights = loadmat(os.path.join(weightsFolder, weights))
     weights = fix_mat(weights['weights'])
-    weights = weights['normalized']['withoutRest']
+
 
 
 if runType == 'calibration':   alpha = None
