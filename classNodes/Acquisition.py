@@ -89,8 +89,9 @@ class Acquisition:
 
     def _run_unicorn(self):
         deviceList = UnicornPy.GetAvailableDevices(True)
-
-        if self.device == 'un' or self.device is None:     
+        if self.device.startswith('UN-'):
+            self.unicorn = UnicornPy.Unicorn(self.device)
+        elif self.device == 'un' or self.device is None:     
             for self.device in deviceList:
                 try:
                     print(f"[{self.name}] Trying to connect to Unicorn device: {self.device}")
@@ -103,6 +104,7 @@ class Acquisition:
                     raise e
                     
         print(f"[{self.name}] Using Unicorn device: {self.device}")
+        self.info['device'] = [self.device]
         channelIndex = [self.unicorn.GetChannelIndex('EEG '+str(i)) for i in range(1,9)] # from 1 to 8
         numberOfAcquiredChannels= self.unicorn.GetNumberOfAcquiredChannels()
         self.SetUnicornSettings()
