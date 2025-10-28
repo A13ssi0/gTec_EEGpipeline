@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
+from collections import Counter
 from fgmdm_riemann.fgmdm_riemann import FgMDM
 import numpy as np
 from pyriemann.utils.base import invsqrtm
 from pyriemann.utils.test import is_sym_pos_def
 from scipy.io import loadmat, savemat
-from py_utils.signal_processing import get_bandranges, get_trNorm_covariance_matrix, logbandpower
+from py_utils.signal_processing import get_bandranges, get_trNorm_covariance_matrix, logbandpower, get_covariance_matrix_normalized
 from py_utils.data_managment import get_files, save
 from py_utils.eeg_managment import select_channels,get_EventsVector_onFeedback,get_channelsMask
 from riemann_utils.covariances import get_riemann_mean_covariance, center_covariances
@@ -14,7 +15,7 @@ import os
 
 
 
-def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
+def main(filter_order=2, windowsLength=1, applyLaplacian=True, classes=None):
 
     bandPass = [[6, 24]]
     stopBand = [[14, 18]]
@@ -32,6 +33,8 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
     pathModels = os.path.join(genPath,'models')
 
     logWindowLength = 1
+
+    normalizationMethod = 'lwf'  # 'lwf' or 'trace'
 
 
     ## -----------------------------------------------------------------------------
@@ -55,11 +58,13 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
     laplacian = np.eye(signal.shape[-1])
     if applyLaplacian:
         pathLaplacian = None
-        print(' - Applying Laplacian')   
-        if h['device'].startswith('NA'):    pathLaplacian = os.path.join(pathData, 'lapMask16Nautilus.mat')
-        elif h['device'].startswith('UN'):  pathLaplacian = os.path.join(pathData, 'lapMask8Unicorn.mat')
+        print(' - Applying Laplacian')  
+        h['device'] = 'UN_test' 
+        if h['device'].startswith('NA'):    pathLaplacian = os.path.join(genPath, 'lapMask16Nautilus.mat')
+        elif h['device'].startswith('UN'):  pathLaplacian = os.path.join(genPath, 'lapMask8Unicorn.mat')
 
         if pathLaplacian is not None :
+            print(f" - Loading Laplacian for device {h['device']} from {pathLaplacian}")
             laplacian = loadmat(pathLaplacian)
             laplacian = laplacian['lapMask']
         else:           
@@ -87,7 +92,8 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
 
 
     # ## ----------------------------------------------------------------------------- Covariances
-    [covs, cov_events] = get_trNorm_covariance_matrix(filt_signal, events_dataFrame, windowsLength, windowsShift, fs)
+    # [covs, cov_events] = get_trNorm_covariance_matrix(filt_signal, events_dataFrame, windowsLength, windowsShift, fs)
+    [covs, cov_events] = get_covariance_matrix_normalized(filt_signal, events_dataFrame, windowsLength, windowsShift, fs, normalizationMethod=normalizationMethod)
     labelVector = get_EventsVector_onFeedback(cov_events, covs.shape[1], classes)
     fdbVector = np.isin(labelVector, classes)
 
@@ -100,12 +106,48 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
         covs_centered = center_covariances(covs, mean_cov, inv_sqrt_mean_cov)
         
 
-    # if not (is_sym_pos_def(covs_centered[:,fdbVector])): 
-    if not (is_sym_pos_def(covs_centered)): 
+    if not (is_sym_pos_def(covs_centered[:,fdbVector])): 
+    # if not (is_sym_pos_def(covs_centered)): 
+        n_bands, n_samples, n_channels, _ = covs_centered.shape
+
+        bad_var_channels = []
+        high_corr_channels = []
         counter = 0
-        for i in range(covs_centered.shape[1]):
-            eigenvalues = np.linalg.eigvalsh(covs_centered[:,i])
-            if np.any(eigenvalues <= 0):    counter += 1
+
+        for b in range(n_bands):
+            for s in range(n_samples):
+                data = covs_centered[b, s, :, :]
+
+                # Eigen decomposition
+                eigenvalues, eigvecs = np.linalg.eigh(data)
+
+                # If not SPD, investigate
+                if np.any(eigenvalues <= 0):
+                    counter += 1
+
+                    # Find low-variance channels
+                    bad_channels = np.where(np.diag(data) < 1e-8)[0]
+                    bad_var_channels.extend(bad_channels)
+
+                    # Find highly correlated pairs
+                    corr = np.corrcoef(data)
+                    pairs = np.argwhere(np.abs(corr) > 0.99)
+                    pairs = np.array([p for p in pairs if p[0] != p[1]])
+                    high_corr_channels.extend(pairs.flatten())
+
+        # Combine all problematic channels
+        problem_channels = bad_var_channels + high_corr_channels
+
+        # Count frequency
+        channel_counts = Counter(problem_channels)
+
+        # Sort by count (descending)
+        sorted_counts = sorted(channel_counts.items(), key=lambda x: x[1], reverse=True)
+
+        print("Channel | Count")
+        for ch, count in sorted_counts:
+            print(f"{ch:>7} | {count}")
+            
         raise ValueError(f' -ERROR : {counter} covariance matrices are not full rank of a total of {covs_centered.shape[1]}.')
 
     
@@ -134,6 +176,7 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
         'rejectionThreshold': rejectionThreshold,
         'applyLog': applyLog,
         'logWindowLength': logWindowLength,
+        'normalizationMethod': normalizationMethod
     }
 
     now = datetime.now().strftime("%Y%m%d.%H%M")
@@ -146,7 +189,7 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=False, classes=None):
         print(f"Warning: Files starting with {subjectCode}.{now}.{task} already exist. Adding a suffix to avoid overwriting.")
         filename += f'.{len(existing_files)}'
 
-    # savemat(f'{filename}.joblib', model)
+
     save(filename, model)
     
 

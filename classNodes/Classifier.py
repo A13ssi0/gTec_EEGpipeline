@@ -7,7 +7,7 @@ from utils.buffer import Buffer
 from utils.server import recv_tcp, recv_udp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, get_serversPort, get_isMultiplePC, get_isMain
 from py_utils.data_managment import load
 from py_utils.eeg_managment import get_channelsMask
-from py_utils.signal_processing import get_covariance_matrix_traceNorm_online
+from py_utils.signal_processing import get_covariance_matrix_traceNorm_online, get_covariance_matrix_lwfNorm_online
 from riemann_utils.covariances import center_covariance_online
 import keyboard, socket, ast, threading
 import numpy as np
@@ -175,11 +175,16 @@ class Classifier:
                        
 
         # print(f"||||||||||||||| [{self.name}]  BUFFER FULLLLLLLLLL: {matrix[0,0]}") # For testing
-        
+        if 'normalizationMethod' not in self.classifier_dict:
+            self.classifier_dict['normalizationMethod'] = 'lwf'  # default
         while not self._stopEvent.is_set():
             try:
                 # kk = time.time()
-                cov = get_covariance_matrix_traceNorm_online(self.buffer.get_data())
+                if self.classifier_dict['normalizationMethod']=='trace':    cov = get_covariance_matrix_traceNorm_online(self.buffer.get_data())
+                elif self.classifier_dict['normalizationMethod']=='lwf':      cov = get_covariance_matrix_lwfNorm_online(self.buffer.get_data())
+
+
+
                 if self.classifier_dict['inv_sqrt_mean_cov'] is not None:
                     cov = center_covariance_online(cov, self.classifier_dict['inv_sqrt_mean_cov'])
                 if not (is_sym_pos_def(cov)): 
@@ -219,7 +224,7 @@ class Classifier:
 
                 # print(f"||||||||||||||| [{self.name}]  matrix: {matrix[0,0]}") # For testing
 
-                # if self.laplacian is not None:  matrix = matrix @ self.laplacian
+                if self.laplacian is not None:  matrix = matrix @ self.laplacian
                 self.buffer.add_data(matrix[:, channelMask])
 
 
