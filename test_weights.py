@@ -8,4 +8,4 @@ if __name__ == "__main__":
     #     if not k.startswith('__'):
     #         print(k, job_data[k].shape)
     #         print(job_data[k])
-    extract_coupleWeights(gammaMI=0, gammaRest=0, doSave=True)
+    extract_coupleWeights(doSave=True)

@@ -5,14 +5,16 @@ from scipy.io import savemat
 import tkinter as tk
 from tkinter import filedialog
 import numpy as np
-from py_utils.signal_processing import get_bandranges, get_trNorm_covariance_matrix, logbandpower
+from py_utils.signal_processing import get_bandranges, get_trNorm_covariance_matrix, logbandpower, get_covariance_matrix_normalized
 from py_utils.data_managment import get_files, load
 from py_utils.eeg_managment import select_channels,get_EventsVector_onFeedback,get_channelsMask
 from riemann_utils.covariances import get_riemann_mean_covariance, center_covariances
 from pyriemann.utils.base import invsqrtm
+from sklearn.metrics import log_loss, brier_score_loss, roc_auc_score
+from scipy.special import softmax
 
 
-def extract_coupleWeights(gammaMI=0, gammaRest=0, doSave=True):
+def extract_coupleWeights(n_subjects=2, doSave=True):
 
     # Load datasets and process them    
     genPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
@@ -20,48 +22,32 @@ def extract_coupleWeights(gammaMI=0, gammaRest=0, doSave=True):
     recordingsPath = os.path.join(genPath, 'recordings')
     modelsPath = os.path.join(genPath, 'models')
 
-    _, probabilities, events, _, subjectCodes, classes = loadProcess_datasets(recordingsPath, modelsPath, do_synchronization=True)
+    model, covs, cov_events, _, filenames = covProcesPipeline_datasets(recordingsPath, modelsPath, n_subjects=n_subjects, cutStartEnd=False)
 
-    # Variables for calc weights
-    doLengthNormalization = True
-    notLengthNormalization = False
-    withRest = True
-    noRest = False
+    f = np.empty(n_subjects, dtype=object)
+    s = np.empty(n_subjects, dtype=object)
+    for nSbj in range(n_subjects):
+        probabilities = np.squeeze(model[nSbj].predict_probabilities(covs[nSbj]))
+        y = np.full(probabilities.shape[0], np.nan)
+        ev = cov_events[nSbj]
+        idx = ev[ev['typ'] == 781].index
+        classes = np.unique(ev['typ'][idx-1])
+        for i in idx:
+            pos = ev['pos'][i]
+            dur = ev['dur'][i]
+            cue = ev['typ'][i - 1]
+            y[pos:pos+dur] = cue == classes[1]  # binary labels
 
-    gamma = [gammaMI, gammaRest]
-    
-    # Calc weighted average with rest
-    print(' ---------------------------------------------------------')
-    print('- WEIGHTS -')
+        f[nSbj] = compute_model_features(probabilities[~np.isnan(y),1], y[~np.isnan(y)].astype(int))
+        s[nSbj] = compute_model_score(f[nSbj])
 
-    print('-- LOSS --')
-    weights = {'weights': {}}
-    weights['weights']['notNormalized'] = {}
-    weights['weights']['normalized'] = {}
-
-    weights['weights']['notNormalized']['withRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, withRest, notLengthNormalization, gamma)
-    print(' --- notNormalized.withRest : ')
-    print(weights['weights']['notNormalized']['withRest'])
-    
-    weights['weights']['normalized']['withRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, withRest, doLengthNormalization, gamma)
-    print(' --- normalized.withRest : ')
-    print(weights['weights']['normalized']['withRest'])
-    
-    # Calc weighted average without rest
-    weights['weights']['notNormalized']['withoutRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, noRest, notLengthNormalization, gamma)
-    print(' --- notNormalized.withoutRest : ')
-    print(weights['weights']['notNormalized']['withoutRest'])
-    
-    weights['weights']['normalized']['withoutRest'] = calc_fusionWeights_crossentropy(probabilities, events, classes, noRest, doLengthNormalization, gamma)
-    print(' --- normalized.withoutRest : ')
-    print(weights['weights']['normalized']['withoutRest'])
-
-    # Calc weight with accuracy
-    weights['accuracy'] = calc_fusionWeights_accuracy(probabilities, events, classes)
-    print('-- ACCURACY :')
-    print(weights['accuracy'])
+    weights = normalize_scores_to_weights([s[0], s[1]], beta=4.0)
+    print("Model weights:", weights)
 
     # Saving
+    subjectCodes = np.empty(n_subjects, dtype=object)
+    for i in range(n_subjects):
+        subjectCodes[i] = filenames[i][0].split('/')[-1][:2]
     savePath = os.path.join(genPath, 'weights')
     sbj_name = f'{subjectCodes[0]}'
     for n_sbj in range(1, len(subjectCodes)):
@@ -72,7 +58,201 @@ def extract_coupleWeights(gammaMI=0, gammaRest=0, doSave=True):
     if doSave:
         print(' - Saving')
         nameString = f'{sbj_name}.fusion_weights.{nowString}.mat'
-        savemat(os.path.join(savePath, nameString), weights)
+        savemat(os.path.join(savePath, nameString), {'weights': weights})
+
+
+
+def compute_model_features(p, y, other_p=None, n_bins=10):
+    """
+    Compute informative features from predicted probabilities and true labels.
+
+    Parameters
+    ----------
+    p : array (N,)  -- predicted prob of class 1
+    y : array (N,)  -- true labels {0,1}
+    other_p : array (N,), optional -- other model's probs (for agreement features)
+    n_bins : int -- bins for ECE calculation
+
+    Returns
+    -------
+    dict of feature_name -> value
+    """
+    eps = 1e-12
+
+    p = np.clip(p, eps, 1 - eps)
+    y = np.asarray(y)
+    N = len(y)
+
+    # Core statistics
+    mean_conf = p.mean()
+    prob_true = p * (y == 1) + (1 - p) * (y == 0)
+    mean_conf_true = prob_true.mean()
+
+    nll = log_loss(y, p)
+    brier = brier_score_loss(y, p)
+
+    ent = -(p * np.log(p) + (1 - p) * np.log(1 - p)).mean()
+    margin = (np.abs(p - 0.5) * 2).mean()
+
+    try:
+        auc = roc_auc_score(y, p)
+    except Exception:
+        auc = 0.5
+
+    # --- Expected Calibration Error (ECE) ---
+    bins = np.linspace(0, 1, n_bins + 1)
+    ece = 0.0
+    p_bar = y.mean()
+    resolution = 0.0
+    bin_idx = np.clip(np.digitize(p, bins) - 1, 0, n_bins - 1)
+    for b in range(n_bins):
+        mask = (bin_idx == b)
+        if not np.any(mask):
+            continue
+        pb = p[mask].mean()
+        yb = y[mask].mean()
+        wb = mask.sum() / N
+        ece += wb * abs(pb - yb)
+        resolution += wb * (yb - p_bar) ** 2
+
+    # Optional cross-model agreement
+    if other_p is not None:
+        other_p = np.clip(other_p, eps, 1 - eps)
+        kl = (p * np.log(p / other_p) + (1 - p) * np.log((1 - p) / (1 - other_p))).mean()
+        l1 = np.abs(p - other_p).mean()
+    else:
+        kl = np.nan
+        l1 = np.nan
+
+    return {
+        "mean_conf": mean_conf,
+        "mean_conf_true": mean_conf_true,
+        "nll": nll,
+        "brier": brier,
+        "entropy": ent,
+        "margin": margin,
+        "auc": auc,
+        "ece": ece,
+        "resolution": resolution,
+        "kl_with_other": kl,
+        "l1_with_other": l1
+    }
+
+
+def compute_model_score(features, feature_weights=None):
+    """
+    Convert feature dict into a single numeric score (higher = better).
+    Flip signs automatically for metrics where lower is better.
+    """
+    default_weights = {
+        "mean_conf_true": 1.0,
+        "nll": 1.0,
+        "brier": 1.0,
+        "ece": 0.8,
+        "resolution": 0.8,
+        "auc": 1.0,
+        "entropy": 0.6,
+        "margin": 0.7,
+        "l1_with_other": -0.2
+    }
+    if feature_weights is None:
+        feature_weights = default_weights
+
+    lower_is_better = {"nll", "brier", "ece", "entropy", "kl_with_other"}
+    score = 0.0
+    for k, w in feature_weights.items():
+        if k not in features or features[k] is None or np.isnan(features[k]):
+            continue
+        v = features[k]
+        if k in lower_is_better:
+            v = -v
+        score += w * v
+    return score
+
+
+def normalize_scores_to_weights(scores, beta=3.0):
+    """
+    Convert a list of model scores into normalized weights using softmax.
+    """
+    w = softmax(beta * np.array(scores))
+    return w / w.sum()
+
+
+
+
+
+
+
+
+def covProcesPipeline_datasets(recPath, modelPath, n_subjects=2, cutStartEnd=False):
+
+    model = np.empty(n_subjects, dtype=object)
+    covs_centered =  np.empty(n_subjects, dtype=object)
+    cov_events = np.empty(n_subjects, dtype=object)
+    rejTh = np.empty(n_subjects)
+    filenames = np.empty(n_subjects, dtype=object)
+
+    for i in range(n_subjects):
+
+        root = tk.Tk()
+        selectedFiles = filedialog.askopenfilenames(initialdir=recPath, title='Select MAT files', filetypes=[('MAT files', '*.mat')])
+        selectedModel = filedialog.askopenfilename(initialdir=modelPath, title='Select Model file', filetypes=[('Model files', '*.joblib')], multiple=False)
+        root.destroy()
+
+        signal, events_dataFrame, h, filenames[i] = get_files(selectedFiles, ask_user=False, cutStartEnd=cutStartEnd)
+
+        modelDictionary = load(selectedModel)
+        model[i] = modelDictionary['fgmdm']
+        fs = modelDictionary['fs']
+        bandPass = modelDictionary['bandPass']
+        stopBand = modelDictionary['stopBand']
+        filter_order = modelDictionary['filter_order']
+        windowsLength = modelDictionary['windowsLength']
+        windowsShift = modelDictionary['windowsShift']
+        # classes = modelDictionary['classes']
+        rejTh[i] = modelDictionary['rejectionThreshold']
+
+
+        print(' ---------------------------------------------------------')
+        print(' - Data and decoder loaded')
+
+        lap_signal = signal @ modelDictionary['laplacian']
+
+        filt_signal = lap_signal
+        if len(bandPass)>0: filt_signal = get_bandranges(filt_signal, bandPass, fs, filter_order, 'bandpass')
+        if len(stopBand)>0: filt_signal = get_bandranges(filt_signal, stopBand, fs, filter_order, 'bandstop')
+
+        if modelDictionary['applyLog']: filt_signal = logbandpower(filt_signal, fs, slidingWindowLength=modelDictionary['logWindowLength'])
+
+
+        # ## -----------------------------------------------------------------------------    
+        wantedChannels = modelDictionary['channels']
+        channels = [ch.replace (" ", "") for ch in h['channels']]
+        channelMask = get_channelsMask(wantedChannels, channels)
+        filt_signal = filt_signal[:, :, channelMask]
+
+        # ## ----------------------------------------------------------------------------- Covariances
+
+        [covs, cov_events[i]] = get_covariance_matrix_normalized(filt_signal, events_dataFrame, windowsLength, windowsShift, fs, normalizationMethod=modelDictionary['normalizationMethod'])
+
+    
+        if modelDictionary['mean_cov'] is not None:
+            # Recenter cov matrices, reference = Riemannian mean of training set only 
+            print(' - Recentering covariance matrices around eye')
+            covs_centered[i] = center_covariances(covs, modelDictionary['mean_cov'], modelDictionary['inv_sqrt_mean_cov'])
+        else:
+            covs_centered[i] = covs
+
+    return model, covs_centered, cov_events, rejTh, filenames
+
+
+
+
+
+
+
+
+
 
 
 def loadProcess_datasets(recordingsPath, modelsPath, do_synchronization=True):
@@ -89,7 +269,7 @@ def loadProcess_datasets(recordingsPath, modelsPath, do_synchronization=True):
     for i in range(n_subjects):
         # recPath = os.path.join(recordingsPath, subjects[i])
         # modpath = os.path.join(modelsPath, subjects[i])
-        integrated_prob[i], probabilities[i], events[i], alphas[i], filenames = pipeline_bci(recordingsPath, modelsPath)
+        integrated_prob[i], probabilities[i], events[i], alphas[i], filenames = pipeline_bci(recordingsPath, modelsPath, cutStartEnd=False)
         subjectCodes[i] = filenames[0].split('/')[-1][:2]
 
     classes = [769, 770] if 'lhrh' in filenames[0] else [773, 771]
@@ -103,58 +283,10 @@ def loadProcess_datasets(recordingsPath, modelsPath, do_synchronization=True):
 
 
 
-
-def pipeline_bci(recPath, modelPath, alpha=0.98):
+def pipeline_bci(recPath, modelPath, cutStartEnd=False, alpha=0.99):
     # Load files
-    root = tk.Tk()
-    selectedFiles = filedialog.askopenfilenames(initialdir=recPath, title='Select MAT files', filetypes=[('MAT files', '*.mat')])
-    selectedModel = filedialog.askopenfilename(initialdir=modelPath, title='Select Model file', filetypes=[('Model files', '*.joblib')], multiple=False)
-    root.destroy()
-
-    signal, events_dataFrame, h, filenames = get_files(selectedFiles, ask_user=False)
-
-    if hasattr(h, 'alpha'):     alpha = h.alpha
-    else:                       print(' - Pipeline informations not found. Alpha sets to default (0.96)')
-       
-    modelDictionary = load(selectedModel)
-    model = modelDictionary['fgmdm']
-    fs = modelDictionary['fs']
-    bandPass = modelDictionary['bandPass']
-    stopBand = modelDictionary['stopBand']
-    filter_order = modelDictionary['filter_order']
-    windowsLength = modelDictionary['windowsLength']
-    windowsShift = modelDictionary['windowsShift']
-    # classes = modelDictionary['classes']
-    rejTh = modelDictionary['rejectionThreshold']
-
-
-    print(' ---------------------------------------------------------')
-    print(' - Data and decoder loaded')
-
-    lap_signal = signal @ modelDictionary['laplacian']
-
-    filt_signal = lap_signal
-    if len(bandPass)>0: filt_signal = get_bandranges(filt_signal, bandPass, fs, filter_order, 'bandpass')
-    if len(stopBand)>0: filt_signal = get_bandranges(filt_signal, stopBand, fs, filter_order, 'bandstop')
-
-    if modelDictionary['applyLog']: filt_signal = logbandpower(filt_signal, fs, slidingWindowLength=modelDictionary['logWindowLength'])
-
-
-    # ## -----------------------------------------------------------------------------    
-    wantedChannels = modelDictionary['channels']
-    channels = [ch.replace (" ", "") for ch in h['channels']]
-    channelMask = get_channelsMask(wantedChannels, channels)
-    filt_signal = filt_signal[:, :, channelMask]
-
-    # ## ----------------------------------------------------------------------------- Covariances
-    [covs, cov_events] = get_trNorm_covariance_matrix(filt_signal, events_dataFrame, windowsLength, windowsShift, fs)
-    # labelVector = get_EventsVector_onFeedback(cov_events, covs.shape[1], classes)
-
-    covs_centered = covs
-    if modelDictionary['mean_cov'] is not None:
-        # Recenter cov matrices, reference = Riemannian mean of training set only 
-        print(' - Recentering covariance matrices around eye')
-        covs_centered = center_covariances(covs, modelDictionary['mean_cov'], modelDictionary['inv_sqrt_mean_cov'])
+    model, covs_centered, cov_events, alpha, rejTh, filenames = covProcesPipeline_datasets(recPath, modelPath, cutStartEnd=cutStartEnd)
+    
 
     probabilities = model.predict_probabilities(covs_centered)
     print(' - Covariance Matrices and classification evaluated')
@@ -181,7 +313,7 @@ def probabilities_integration(data, alpha, events, rejTh=0.5):
 
 
 def do_integration(old_data, new_data, alpha, rejTh=0.5):
-    if np.max(new_data) < rejTh:    return old_data
+    if np.max(new_data) < rejTh:    new_data = np.array([0.5, 0.5])
     if new_data[0] != new_data[1]: new_data = np.array([1, 0]) if new_data[0] > new_data[1] else np.array([0, 1])
     else:   new_data = np.array([0.5, 0.5])
     return old_data * alpha + new_data * (1 - alpha)
@@ -202,8 +334,9 @@ def synchronize_datasets(probabilities, events):
         if (ttyp != events[i]['typ']).any():    raise ValueError('EVENTS ARE DIFFERENT')
         else:                                       flag[1, i - 1] = 1
 
+        diff = tpos.values - events[i]['pos'].values
         # check if the pos are just shifted equally, if so move them and the probabilities
-        if not np.array_equal(tpos, events[i]['pos']):
+        if np.any(abs(diff)>1):
             offset = tpos[0] - events[i]['pos'][0]
 
             if not np.array_equal(tpos, events[i]['pos']) and np.all(tpos - events[i]['pos'] == offset):
@@ -215,7 +348,7 @@ def synchronize_datasets(probabilities, events):
                     events[i]['pos'] = events[i]['pos'] - offset
                     probabilities[0] = probabilities[0][:-offset]
                     probabilities[i] = probabilities[i][offset:]
-            else:
+            elif len(np.unique(tpos - events[i]['pos']))>1:
                 raise ValueError('EVENTS ARE DIFFERENT')
         else:
             flag[2, i - 1] = 1
