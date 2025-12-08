@@ -147,7 +147,7 @@ class Classifier:
         if self.info['dataChunkSize']!=self.classifier_dict['windowsShift']*self.classifier_dict['fs']:    
             Warning(f"[{self.name}] WindowShift mismatch: {self.info['dataChunkSize']} != {self.classifier_dict['windowsShift']*self.classifier_dict['fs']}")
         channelMask = get_channelsMask(self.classifier_dict['channels'], self.info['channels'])
-      
+       
         message = 'FILTERS'
         if self.classifier_dict['bandPass']:
             hp = self.classifier_dict['bandPass'][0][0]
@@ -202,13 +202,13 @@ class Classifier:
                     # print(f"[{self.name}] Probabilities: {[np.nan, np.nan]} (rejected)") # for testing
                     prob = [0.5, 0.5]
                     # print(prob)
-                    send_tcp(f'PROB/{np.nan}/{np.nan}', self.probSock) # for testing
+                    # send_tcp(f'PROB/{np.nan}/{np.nan}', self.probSock) # for testing
                     # pass # for testing
-                else:  
+                # else:  
                     # print(f"[{self.name}] Probabilities: {prob} (rejected)") # for testing
                     # print(prob)
-
-                    send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock) # for testing
+                # print(f"||||||||||||||| [{self.name}]  probabilities: {prob}") # For testing
+                send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock) # for testing
                     # pass # for testing
                 # print(f" ------ [{self.name}] Time for sends: {time.time()-kk_pred}")  # for testing
                 # print(f"||||||||||||||| [{self.name}] probabilities: {self.buffer.get_data()[0,0]}")

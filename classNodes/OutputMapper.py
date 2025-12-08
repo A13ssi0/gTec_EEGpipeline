@@ -2,6 +2,7 @@ import socket
 from utils.server import TCPServer, UDPServer, safeClose_socket, get_serversPort, get_isMultiplePC, wait_for_tcp_server, send_tcp, recv_tcp
 import threading, time, numpy as np
 from datetime import datetime # for testing
+from py_utils.plots_prints import fmt
 
 class OutputMapper:
     def __init__(self, managerPort=25798, weights=[1], alpha=0.96, host='127.0.0.1'):
@@ -65,7 +66,7 @@ class OutputMapper:
                 if self.new_data_event.is_set():
                     count += 1
                     probabilities = np.array([prob['values'] for prob in self.probabilities])
-                    weighted_avg = self.nanweighted_avg(probabilities, self.weights, axis=0)
+                    weighted_avg = self.weighted_avg(probabilities, self.weights, axis=0)
 
                     # if probabilities[0][0] % 50 == 0: # For testing 
                     #     aa = datetime.now().strftime("%H:%M:%S.%f")# For testing
@@ -75,34 +76,43 @@ class OutputMapper:
                     # if True:    # for testing
                         if weighted_avg[0] != weighted_avg[1]: weighted_probabilities = np.array([1, 0]) if weighted_avg[0] > weighted_avg[1] else np.array([0, 1])
                         else:   weighted_probabilities = np.array([0.5, 0.5])
+
                         self.integratedProb = self.alpha * self.integratedProb + (1 - self.alpha) * weighted_probabilities
                         self.percPosX = self.integratedProb[1] # LINEAR
+
                         # if probabilities[0][0] % 50 == 0:  # for testing
                         #     aa = datetime.now().strftime("%H:%M:%S.%f") # for testing
                         #     print(f" -- [{self.name}] {probabilities[0][0]} chunks at {aa}.") # for testing
                         # print(f"[{self.name}] Probabilities: {[np.nan, np.nan]} (rejected)") # for testing
 
-                        
-                       
-                            
                         self.PercX_socket.broadcast(self.percPosX)
+                    else:
+                        print(f"[{self.name}] WARNING: Received NaN probabilities, skipping update.")
 
                     # if count%25==0: 
                     #     print(f"[{self.name}]  WAv:{weighted_avg}, WProb:{weighted_probabilities}, Integrated:{self.integratedProb}, PercPosX:{self.percPosX}, Time:{time.time()-old_timer}, {(time.time()-old_timer)/25}") #Prob:{probabilities},
                     #     old_timer = time.time()
                     # if count%25==0: print(f"[{self.name}] PercPosX:{self.percPosX}") #Prob:{probabilities},
-                    print(f"[{self.name}]  WAv:{weighted_avg}, WProb:{weighted_probabilities}, Integrated:{self.integratedProb}, PercPosX:{self.percPosX}") # for testing
+                    print(
+                        f"[{self.name}]  "
+                        f"Prob:{fmt(probabilities)},   "
+                        f"WAv:{fmt(weighted_avg)},   "
+                        f"Integrated:{fmt(self.integratedProb)},   "
+                        f"PercPosX:{self.percPosX:.3f}"
+                    )
+
+                    
                     for prob in self.probabilities: prob['isNew'] = False
                     self.new_data_event.clear()
 
         except Exception as e:
             if not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():   print(f"[{self.name}] Error or disconnected:", e)
 
-    def nanweighted_avg(self, values, weights, axis=0): 
+    def weighted_avg(self, values, weights, axis=0): 
         # k = [np.any(np.isnan(vl)) for vl in values]
         # weights[k] =  0
         # if (weights==0).all():   return np.array([np.nan, np.nan])
-        return np.average(np.nan_to_num(values), axis=axis, weights=weights)
+        return np.average(values, axis=axis, weights=weights)
     
     def listen_reset(self, sock, reset_event):
         while not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():

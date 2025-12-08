@@ -64,7 +64,14 @@ class Acquisition:
     def _run_mat_device(self):
         mat = loadmat(self.device)
         signal = mat['s']
-        self.info = fix_mat(mat['h'])
+        header = fix_mat(mat['h'])
+
+        self.info['SampleRate'] = header['SampleRate'].item()
+        self.info['channels'] = header['channels'].tolist()
+        self.info['dataChunkSize'] = header['dataChunkSize'].item()
+        # self.info['device'] = self.device
+
+        print(f"[{self.name}] Loaded MAT file: {self.device}.")
 
         dt = self.info['dataChunkSize'] / self.info['SampleRate']
         sleep_time = max(0, dt - 0.001)
@@ -74,7 +81,8 @@ class Acquisition:
 
         pointer = 0
         while not self.EEG_socket._stopEvent.is_set():
-            self.data_callback(signal[pointer:pointer + self.info['dataChunkSize'], :])
+            data = signal[pointer:pointer + self.info['dataChunkSize'], :]
+            self.data_callback(data)
             pointer += self.info['dataChunkSize']
             if pointer + self.info['dataChunkSize'] >= signal.shape[0]:   
                 print(f"[{self.name}] Reached end of data, restarting from beginning.")
