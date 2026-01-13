@@ -17,18 +17,19 @@ weightsFolder = os.path.join(genPath, "weights")
 
 
 
-runType =  "calibration" # Default run type (e.g., 'calibration', 'evaluation', 'test')
+runType =  "evaluation" # Default run type (e.g., 'calibration', 'evaluation', 'test')
 task = 'mi_lhrh'  # Default task
+# task = 'TEST'  # Default task
 
-subjectCode = 'ro'  # Default subject code
 
-# device = 'UN-2023.07.19'
-device = 'UN-2023.07.19'  # un na test doubleTest
-model = 'me.20251015.1544.mi_lhrh.joblib'  # Default model for testing
+subjectCode = 'a5'  # Default subject code
 
-alpha = 0.99
-weights = [1]
+device = 'UN-2023.07.19'
+# device = '  # un na test doubleTest
+model = 'a5.20260113.1039.mi_lhrh.joblib'  # Default model for testing
 
+alpha = 0.985
+weights = 'a5.a4.fusion_weights.20260113.mat'
 
 
 
@@ -70,7 +71,7 @@ if device == 'doubleTest':
     weights = [1,1]
 
 
-if isinstance(weights, str):  
+if isinstance(weights, str) and weights != 'same':  
     weights = loadmat(os.path.join(weightsFolder, weights))
     weights = fix_mat(weights['weights'])
 
@@ -81,9 +82,8 @@ if runType == 'calibration':   alpha = None
 
 if 'un' in device.lower():      laplacianPath = f'{genPath}/lapMask8Unicorn.mat' 
 elif 'na' in device.lower():    laplacianPath = f'{genPath}/lapMask16Nautilus.mat'  
-else:                           laplacianPath = f'{genPath}/lapMask16Nautilus.mat'
+else:                           laplacianPath = f'{genPath}/lapMask8Unicorn.mat' 
 
-lenWindowVisualizer = '10' 
 
 
 # ---------------------------------------------------------------------------------------------

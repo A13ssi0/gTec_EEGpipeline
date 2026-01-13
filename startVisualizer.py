@@ -9,8 +9,7 @@ free_ports = get_free_ports(ip=host, n=6)
 portManagerPort = str(25798) 
 
 # ---------------------------------------------------------------------------------------------
-# device = 'UN-2023.07.19'
-device = 'un'  # Default device for testing
+device = 'UN-2023.07.19'  # Default device foùr testing
 lenWindowVisualizer = '10' 
 
 # ---------------------------------------------------------------------------------------------

@@ -16,6 +16,8 @@ managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
 
 if len(sys.argv[2]) == 3:
     weights = [1]
+elif sys.argv[2] == 'same':
+    weights = [0.5, 0.5]
 else:
     weights = np.array([float(x) for x in sys.argv[2][2:-2].split()]) if len(sys.argv) > 2 else ['1']
 alpha = float(sys.argv[3]) if len(sys.argv) > 3 else 0.96

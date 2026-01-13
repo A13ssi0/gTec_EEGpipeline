@@ -1,4 +1,4 @@
-from extract_coupleWeights import extract_coupleWeights
+from utils.extract_coupleWeights import extract_coupleWeights
 from py_utils.data_managment import get_files, load, save
 
 
