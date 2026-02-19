@@ -59,9 +59,11 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=True, classes=None):
     if applyLaplacian:
         pathLaplacian = None
         print(' - Applying Laplacian')  
-        h['device'] = 'UN_test' 
+
         if h['device'].startswith('NA'):    pathLaplacian = os.path.join(genPath, 'lapMask16Nautilus.mat')
         elif h['device'].startswith('UN'):  pathLaplacian = os.path.join(genPath, 'lapMask8Unicorn.mat')
+        elif h['device'].startswith('test'):  pathLaplacian = ''
+
 
         if pathLaplacian is not None :
             print(f" - Loading Laplacian for device {h['device']} from {pathLaplacian}")
@@ -93,6 +95,7 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=True, classes=None):
 
     # ## ----------------------------------------------------------------------------- Covariances
     # [covs, cov_events] = get_trNorm_covariance_matrix(filt_signal, events_dataFrame, windowsLength, windowsShift, fs)
+    print(f' - Computing covariance matrices with normalization method: {windowsShift}')
     [covs, cov_events] = get_covariance_matrix_normalized(filt_signal, events_dataFrame, windowsLength, windowsShift, fs, normalizationMethod=normalizationMethod)
     labelVector = get_EventsVector_onFeedback(cov_events, covs.shape[1], classes)
     fdbVector = np.isin(labelVector, classes)
@@ -190,7 +193,7 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=True, classes=None):
         filename += f'.{len(existing_files)}'
 
 
-    save(filename, model)
+    # save(filename, model)
     
 
 if __name__ == '__main__':

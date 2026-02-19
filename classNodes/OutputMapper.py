@@ -15,6 +15,10 @@ class OutputMapper:
         self.percPosX = 0.5 
         self.new_data_event = threading.Event()
         self.reset_event = threading.Event()
+        self._print_count = 0
+        self._print_timer = time.time()
+        self._prints_per_sec = 0.0
+
 
         neededPorts = ['OutputMapper', 'PercPosX', 'host', 'EventBus']
         self.init_sockets(managerPort=managerPort, neededPorts=neededPorts)
@@ -93,12 +97,22 @@ class OutputMapper:
                     #     print(f"[{self.name}]  WAv:{weighted_avg}, WProb:{weighted_probabilities}, Integrated:{self.integratedProb}, PercPosX:{self.percPosX}, Time:{time.time()-old_timer}, {(time.time()-old_timer)/25}") #Prob:{probabilities},
                     #     old_timer = time.time()
                     # if count%25==0: print(f"[{self.name}] PercPosX:{self.percPosX}") #Prob:{probabilities},
+                    # self._print_count += 1
+                    # now = time.time()
+                    # elapsed = now - self._print_timer
+
+                    # if elapsed >= 1.0:  # update once per second
+                    #     self._prints_per_sec = self._print_count / elapsed
+                    #     self._print_count = 0
+                    #     self._print_timer = now
+
                     print(
                         f"[{self.name}]  "
                         f"Prob:{fmt(probabilities)},   "
                         f"WAv:{fmt(weighted_avg)},   "
                         f"Integrated:{fmt(self.integratedProb)},   "
-                        f"PercPosX:{self.percPosX:.3f}"
+                        f"PercPosX:{self.percPosX:.3f},    "
+                        # f"PPS:{self._prints_per_sec:.2f}"
                     )
 
                     
