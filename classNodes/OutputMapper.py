@@ -1,3 +1,4 @@
+import os
 import socket
 from utils.server import TCPServer, UDPServer, safeClose_socket, get_serversPort, get_isMultiplePC, wait_for_tcp_server, send_tcp, recv_tcp
 import threading, time, numpy as np
@@ -19,6 +20,20 @@ class OutputMapper:
         self._print_timer = time.time()
         self._prints_per_sec = 0.0
 
+
+        parent_dir = os.path.dirname(os.path.abspath(''))
+        parent_dir = os.path.join(parent_dir, 'gtec_EEGpipeline')
+        data_dir = os.path.join(parent_dir, 'data')
+        filePath = os.path.join(data_dir, 'recordings')
+
+        today = datetime.now().strftime("%Y%m%d")
+
+        now = datetime.now().strftime("%H%M%S")
+        filePath += f'/{today}.{now}'
+
+        self.fileProb = open(f"{filePath}_prob.txt", "w")
+        self.fileInt = open(f"{filePath}_probInt.txt", "w")
+        self.fileTimestamp = open(f"{filePath}_timestamp.txt", "w")
 
         neededPorts = ['OutputMapper', 'PercPosX', 'host', 'EventBus']
         self.init_sockets(managerPort=managerPort, neededPorts=neededPorts)
@@ -84,6 +99,12 @@ class OutputMapper:
                         self.integratedProb = self.alpha * self.integratedProb + (1 - self.alpha) * weighted_probabilities
                         self.percPosX = self.integratedProb[1] # LINEAR
 
+                        self.fileProb.write(' '.join(map(str, probabilities.flatten())) + '\n')
+                        self.fileInt.write(' '.join(map(str, self.integratedProb)) + '\n')
+                        aa = datetime.now().strftime("%H:%M:%S.%f")# For testing
+                        self.fileTimestamp.write(f"{aa}\n")
+
+
                         # if probabilities[0][0] % 50 == 0:  # for testing
                         #     aa = datetime.now().strftime("%H:%M:%S.%f") # for testing
                         #     print(f" -- [{self.name}] {probabilities[0][0]} chunks at {aa}.") # for testing
@@ -148,7 +169,14 @@ class OutputMapper:
 
     def close(self):
         safeClose_socket(self.Prob_socket, name=self.name)
-        safeClose_socket(self.PercX_socket, name=self.name)  
+        safeClose_socket(self.PercX_socket, name=self.name) 
+        self.close_files()
+
+
+    def close_files(self):
+        self.fileProb.close()
+        self.fileInt.close()
+        self.fileTimestamp.close() 
    
 
     def __del__(self):
