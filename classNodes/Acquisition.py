@@ -17,6 +17,7 @@ class Acquisition:
         self.device = device
         self.host = host
         self.info = {}
+        self.info['isMapperTCP'] = True
 
         # self.file = open(r"C:\Users\aless\Desktop\gNautilus\data\recordings\acq_data.txt", "w")
 
