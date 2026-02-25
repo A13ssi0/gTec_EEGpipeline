@@ -1,10 +1,11 @@
 import numpy as np
-import pygds, time, UnicornPy
+import pygds
+import UnicornPy
 from utils.server import  UDPServer, TCPServer, safeClose_socket, get_serversPort
 from scipy.io import loadmat
 from py_utils.data_managment import fix_mat
 # for testing
-import os
+import os, time
 from scipy.io import savemat
 from datetime import datetime
 
@@ -163,7 +164,10 @@ class Acquisition:
         self.info['dataChunkSize'] = 25
 
     def SetUnicornSettings(self):
-        self.info['SampleRate'] = UnicornPy.SamplingRate
+        if self.device == 'test':
+            self.info['SampleRate'] = 250
+        else:
+            self.info['SampleRate'] = UnicornPy.SamplingRate
         # self.info['channels'] = ['EEG '+str(i) for i in range(1,9)]
         self.info['channels'] = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8']
         self.info['dataChunkSize'] = 10

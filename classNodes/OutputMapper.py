@@ -49,7 +49,7 @@ class OutputMapper:
         elif portDict['host'] is not None:    self.host = portDict['host']
 
         self.Prob_socket = TCPServer(host=self.host, port=portDict['OutputMapper'], serverName=self.name, node=self)
-        self.PercX_socket = UDPServer(host=self.host, port=portDict['PercPosX'], serverName=self.name, node=self)
+        self.PercX_socket = TCPServer(host=self.host, port=portDict['PercPosX'], serverName=self.name, node=self)
 
         self.events = wait_for_tcp_server(self.host, portDict['EventBus'])
         data = {'alpha': self.alpha, 'weights': self.weights.tolist()}
@@ -78,7 +78,7 @@ class OutputMapper:
                     # print(f"[{self.name}] Resetting integrated probabilities and weights.")
                     self.integratedProb = np.full(2, 0.5)
                     self.percPosX = self.integratedProb[1]
-                    self.PercX_socket.broadcast(self.percPosX)
+                    self.PercX_socket.broadcast(str(self.percPosX))
                     # print(f"[{self.name}] PERCPOSX: {self.percPosX}") # for testing
                 
 
@@ -110,7 +110,7 @@ class OutputMapper:
                         #     print(f" -- [{self.name}] {probabilities[0][0]} chunks at {aa}.") # for testing
                         # print(f"[{self.name}] Probabilities: {[np.nan, np.nan]} (rejected)") # for testing
 
-                        self.PercX_socket.broadcast(self.percPosX)
+                        self.PercX_socket.broadcast(str(self.percPosX))
                     else:
                         print(f"[{self.name}] WARNING: Received NaN probabilities, skipping update.")
 
