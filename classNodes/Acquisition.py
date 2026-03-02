@@ -1,6 +1,10 @@
 import numpy as np
-import pygds
-import UnicornPy
+try:
+    import pygds
+    import UnicornPy
+except:
+    print("[Acquisition] Warning: Could not import pygds or UnicornPy. Make sure the necessary libraries are installed and available.")
+
 from utils.server import  UDPServer, TCPServer, safeClose_socket, get_serversPort
 from scipy.io import loadmat
 from py_utils.data_managment import fix_mat

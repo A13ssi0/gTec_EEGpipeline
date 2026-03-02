@@ -88,7 +88,7 @@ class Classifier:
         value = 0.5
         step = 0.02     # at 25 Hz, this gives a 0.5 movement in 1 second
         if self.isMain: keyboardCommands = ['left', 'right']
-        else:           keyboardCommands = ['a', 'd']
+        else:           keyboardCommands = ['down', 'up']
 
         while not self.buffer.isFull:
             _, matrix = recv_tcp(self.filtSock)
