@@ -31,9 +31,9 @@ class OutputMapper:
         now = datetime.now().strftime("%H%M%S")
         filePath += f'/{today}.{now}'
 
-        self.fileProb = open(f"{filePath}_prob.txt", "w")
-        self.fileInt = open(f"{filePath}_probInt.txt", "w")
-        self.fileTimestamp = open(f"{filePath}_timestamp.txt", "w")
+        # self.fileProb = open(f"{filePath}_prob.txt", "w")
+        # self.fileInt = open(f"{filePath}_probInt.txt", "w")
+        # self.fileTimestamp = open(f"{filePath}_timestamp.txt", "w")
 
         neededPorts = ['OutputMapper', 'PercPosX', 'host', 'EventBus']
         self.init_sockets(managerPort=managerPort, neededPorts=neededPorts)
@@ -69,6 +69,7 @@ class OutputMapper:
 
         while len(self.probabilities) != len(self.weights) : time.sleep(0.1)
 
+        self._print_timer = time.time()
         self.new_data_event.clear()
         try:
             while not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():
@@ -83,7 +84,7 @@ class OutputMapper:
                 
 
                 if self.new_data_event.is_set():
-                    count += 1
+                    # self._print_count += 1
                     probabilities = np.array([prob['values'] for prob in self.probabilities])
                     weighted_avg = self.weighted_avg(probabilities, self.weights, axis=0)
 
@@ -99,10 +100,10 @@ class OutputMapper:
                         self.integratedProb = self.alpha * self.integratedProb + (1 - self.alpha) * weighted_probabilities
                         self.percPosX = self.integratedProb[1] # LINEAR
 
-                        self.fileProb.write(' '.join(map(str, probabilities.flatten())) + '\n')
-                        self.fileInt.write(' '.join(map(str, self.integratedProb)) + '\n')
-                        aa = datetime.now().strftime("%H:%M:%S.%f")# For testing
-                        self.fileTimestamp.write(f"{aa}\n")
+                        # self.fileProb.write(' '.join(map(str, probabilities.flatten())) + '\n')
+                        # self.fileInt.write(' '.join(map(str, self.integratedProb)) + '\n')
+                        # aa = datetime.now().strftime("%H:%M:%S.%f")# For testing
+                        # self.fileTimestamp.write(f"{aa}\n")
 
 
                         # if probabilities[0][0] % 50 == 0:  # for testing
@@ -126,6 +127,13 @@ class OutputMapper:
                     #     self._prints_per_sec = self._print_count / elapsed
                     #     self._print_count = 0
                     #     self._print_timer = now
+                             
+                    wps = 1/(time.time() - self._print_timer) 
+                    if 23 < wps < 28:
+                       wpsString = f"Wind/sec:{wps:.2f},    "
+                    else:
+                       wpsString = f"\033[31mWind/sec:{wps:.2f}\033[0m,    "
+
 
                     print(
                         f"[{self.name}]  "
@@ -133,10 +141,11 @@ class OutputMapper:
                         f"WAv:{fmt(weighted_avg)},   "
                         f"Integrated:{fmt(self.integratedProb)},   "
                         f"PercPosX:{self.percPosX:.3f},    "
+                        f"{wpsString}"
                         # f"PPS:{self._prints_per_sec:.2f}"
                     )
 
-                    
+                    self._print_timer = time.time()                    
                     for prob in self.probabilities: prob['isNew'] = False
                     self.new_data_event.clear()
 
@@ -174,9 +183,10 @@ class OutputMapper:
 
 
     def close_files(self):
-        self.fileProb.close()
-        self.fileInt.close()
-        self.fileTimestamp.close() 
+        # self.fileProb.close()
+        # self.fileInt.close()
+        # self.fileTimestamp.close() 
+        pass
    
 
     def __del__(self):
