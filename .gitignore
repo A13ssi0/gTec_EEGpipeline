@@ -2,6 +2,12 @@
 *.mat
 *.ipynb
 *.m
+*.mat
+*.log
+*.pkl
+*.png
+*.svg
+*.json
 .vscode
 *.pdf
 __pycache__
@@ -10,3 +16,5 @@ data/recordings/*
 extra/
 data/models/*
 data/weights/*
+data - Copia/*
+data (Marouane)/*
