@@ -3,8 +3,6 @@ import ast
 import numpy as np
 from scipy.signal import welch
 
-from py_utils.buffer import Buffer
-
 from utils.server import (
     TCPServer,
     recv_udp,
@@ -19,146 +17,176 @@ from utils.server import (
 
 class Filter:
     """
-    Online PSD filter.
+    Online PSD processor.
 
-    INPUT:
+    Input:
         TCP stream of EEG chunks shaped:
             (samples, channels)
 
-    OUTPUT:
-        Flattened PSD vector ordered by frequency:
+    Output:
+        Flattened PSD vector ordered as:
+            freq1[ch1..chN], freq2[ch1..chN], ...
 
-        freq1[ch1..chN],
-        freq2[ch1..chN],
-        freq3[ch1..chN], ...
     """
 
-    def __init__(self, managerPort=25798, host='127.0.0.1'):
-        self.name = "Filter"
+    def __init__(
+        self,
+        managerPort=25798,
+        host="127.0.0.1",
+        win_length=1.0,
+        update_rate=0.25,
+        freq_limit=50,
+        nperseg=256
+    ):
         self.host = host
+        self.name = "Filter"
 
-        # PSD settings
-        self.win_length = 1.0      # seconds
-        self.update_rate = 0.25    # seconds
-        self.freq_limit = 50.0     # Hz
+        # PSD parameters
+        self.win_length = win_length
+        self.update_rate = update_rate
+        self.freq_limit = freq_limit
+        self.nperseg = nperseg
 
-        # runtime
-        self.info = {}
+        # runtime vars
         self.sfreq = None
-
         self.buffer = None
         self.buffer_samples = None
         self.update_samples = None
         self.samples_since_update = 0
-
         self.freq_mask = None
         self.freqs = None
 
+        self.f_print = True
+
         neededPorts = [
-            'InfoDictionary',
-            'EEGData',
-            'FilteredData',
-            'host'
+            "InfoDictionary",
+            "EEGData",
+            "FilteredData",
+            "host"
         ]
 
         self.init_sockets(managerPort, neededPorts)
 
-    # ---------------------------------------------------
-    # SOCKETS
-    # ---------------------------------------------------
+    # =====================================================
+    # SOCKET INIT
+    # =====================================================
+
     def init_sockets(self, managerPort, neededPorts):
+
         portDict = get_serversPort(
             host=self.host,
             managerPort=managerPort,
             neededPorts=neededPorts
         )
 
-        if portDict['host'] is not None:
-            self.host = portDict['host']
+        if portDict["host"] is not None:
+            self.host = portDict["host"]
 
-        self.InfoDictPort = portDict['InfoDictionary']
-        self.EEGPort = portDict['EEGData']
+        self.EEGPort = portDict["EEGData"]
+        self.InfoDictPort = portDict["InfoDictionary"]
 
         self.Filtered_socket = TCPServer(
             host=self.host,
-            port=portDict['FilteredData'],
+            port=portDict["FilteredData"],
             serverName=self.name,
             node=self
         )
 
-    # ---------------------------------------------------
-    # LOAD INFO
-    # ---------------------------------------------------
-    def load_info(self):
+    # =====================================================
+    # INFO
+    # =====================================================
+
+    def request_info(self):
+
         wait_for_udp_server(self.host, self.InfoDictPort)
 
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            send_udp(udp_sock, (self.host, self.InfoDictPort), "GET_INFO")
-            _, raw_info, _ = recv_udp(udp_sock)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+
+            send_udp(sock, (self.host, self.InfoDictPort), "GET_INFO")
+            _, raw_info, _ = recv_udp(sock)
 
         try:
-            self.info = ast.literal_eval(raw_info)
+            info = ast.literal_eval(raw_info)
         except Exception as e:
-            print(f"[{self.name}] Could not parse info: {e}")
-            self.info = {}
+            print(f"[{self.name}] Info parse error: {e}")
+            info = {}
 
-        self.sfreq = int(self.info.get("SampleRate", 250))
+        self.sfreq = info.get("SampleRate", 512)
+
+        self.buffer_samples = int(self.win_length * self.sfreq)
+        self.update_samples = int(self.update_rate * self.sfreq)
 
         print(f"[{self.name}] SampleRate = {self.sfreq}")
+        print(f"[{self.name}] Window = {self.buffer_samples} samples")
+        print(f"[{self.name}] Update = {self.update_samples} samples")
 
-    # ---------------------------------------------------
+    # =====================================================
+    # BUFFER
+    # =====================================================
+
+    def init_buffer(self, n_channels):
+
+        self.buffer = np.zeros(
+            (self.buffer_samples, n_channels),
+            dtype=np.float32
+        )
+
+    def update_buffer(self, chunk):
+
+        n = chunk.shape[0]
+
+        if n >= self.buffer_samples:
+            self.buffer[:] = chunk[-self.buffer_samples:]
+
+        else:
+            self.buffer[:-n] = self.buffer[n:]
+            self.buffer[-n:] = chunk
+
+        self.samples_since_update += n
+
+    # =====================================================
     # PSD
-    # ---------------------------------------------------
-    def compute_psd(self, data):
-        """
-        Input:
-            data = (samples, channels)
+    # =====================================================
 
-        Output:
-            (channels, freqs)
-        """
-        nperseg = min(256, data.shape[0])
+    def compute_psd(self):
 
-        freqs, pxx = welch(
-            data,
+        f, pxx = welch(
+            self.buffer,
             fs=self.sfreq,
-            nperseg=nperseg,
-            noverlap=nperseg // 2,
+            nperseg=min(self.nperseg, self.buffer.shape[0]),
             axis=0
         )
 
         if self.freq_mask is None:
-            self.freq_mask = freqs <= self.freq_limit
-            self.freqs = freqs[self.freq_mask]
+            self.freq_mask = f <= self.freq_limit
+            self.freqs = f[self.freq_mask]
 
-        pxx = pxx[self.freq_mask]      # (freqs, channels)
+        if self.f_print:
+            print("PSD Frequencies:", self.freqs)
+            self.f_print = False
 
-        # log transform
+        pxx = pxx[self.freq_mask]       # (freqs, channels)
+
+        # log power
         pxx = np.log10(pxx + 1e-12)
 
-        return pxx.T                  # (channels, freqs)
+        return pxx
 
-    def flatten_psd(self, psd):
-        """
-        Convert:
+    def format_output(self, psd):
 
-        (channels, freqs)
+        # psd shape = (freqs, channels)
+        # flatten row-wise:
+        # freq1[ch1..N], freq2[ch1..N]
 
-        to:
+        return psd.reshape(-1).astype(np.float32)
 
-        freq1[ch1..N], freq2[ch1..N], ...
-        """
-        return (
-            psd.T
-               .reshape(-1)
-               .astype(np.float32)
-        )
+    # =====================================================
+    # MAIN LOOP
+    # =====================================================
 
-    # ---------------------------------------------------
-    # RUN
-    # ---------------------------------------------------
     def run(self):
-        self.load_info()
+
+        self.request_info()
 
         self.Filtered_socket.start()
 
@@ -167,57 +195,40 @@ class Filter:
         try:
             tcp_sock = wait_for_tcp_server(self.host, self.EEGPort)
 
-            print(f"[{self.name}] Connected to EEG stream")
+            print(f"[{self.name}] Connected to EEG source")
 
             while not self.Filtered_socket._stopEvent.is_set():
 
-                _, chunk = recv_tcp(tcp_sock)
-                chunk = np.asarray(chunk, dtype=np.float32)
+                try:
+                    _, chunk = recv_tcp(tcp_sock)
 
-                if chunk.ndim != 2:
-                    continue
+                    if chunk is None:
+                        continue
 
-                # first chunk -> init buffer
-                if self.buffer is None:
-                    n_channels = chunk.shape[1]
+                    if self.buffer is None:
+                        self.init_buffer(chunk.shape[1])
 
-                    self.buffer_samples = int(
-                        self.win_length * self.sfreq
-                    )
+                    self.update_buffer(chunk)
 
-                    self.update_samples = int(
-                        self.update_rate * self.sfreq
-                    )
+                    if self.samples_since_update >= self.update_samples:
 
-                    self.buffer = Buffer(
-                        (self.buffer_samples, n_channels)
-                    )
+                        self.samples_since_update = 0
 
-                # update rolling buffer
-                self.buffer.add_data(chunk)
+                        psd = self.compute_psd()
 
-                # wait until full buffer
-                if not self.buffer.isFull:
-                    continue
+                        payload = self.format_output(psd)
 
-                self.samples_since_update += chunk.shape[0]
+                        self.Filtered_socket.broadcast(payload)
 
-                # exact timing (no drift)
-                while self.samples_since_update >= self.update_samples:
-                    self.samples_since_update -= self.update_samples
-
-                    data = self.buffer.get_data()
-
-                    psd = self.compute_psd(data)
-
-                    packet = self.flatten_psd(psd)
-
-                    self.Filtered_socket.broadcast(packet)
+                except Exception as e:
+                    print(f"[{self.name}] Processing error: {e}")
+                    break
 
         except Exception as e:
-            print(f"[{self.name}] Error: {e}")
+            print(f"[{self.name}] Connection error: {e}")
 
         finally:
+
             if tcp_sock is not None:
                 try:
                     tcp_sock.close()
@@ -226,13 +237,16 @@ class Filter:
 
             self.close()
 
-    # ---------------------------------------------------
+    # =====================================================
     # CLOSE
-    # ---------------------------------------------------
+    # =====================================================
+
     def close(self):
+
         safeClose_socket(self.Filtered_socket, name=self.name)
 
     def __del__(self):
+
         try:
             self.close()
         except:
