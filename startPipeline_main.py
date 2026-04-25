@@ -18,7 +18,7 @@ task = 'mi_lhrh'  # Default task
 
 subjectCode = 'a5'  # Default subject code
 
-device = 'UN-2023.07.19'
+device = 'test'
 # device = '  # un na test doubleTest
 
 
@@ -65,4 +65,24 @@ portDict['EventBus'] = free_ports[3]
 subprocess.Popen([sys.executable, "classLaunchers\launchPortManager.py", portManagerPort, json.dumps(portDict), str(isMain), str(useMultiplePc)]) # F1
 subprocess.Popen([sys.executable, "classLaunchers\launchAcquisition.py", device, portManagerPort])  # F2
 subprocess.Popen([sys.executable, "classLaunchers\launchRecorder.py", portManagerPort, subjectCode, recFolder, runType, task]) # F5
-subprocess.Popen([sys.executable, "classLaunchers\launchFilter.py", portManagerPort])  # F3
+subprocess.Popen([sys.executable, "classLaunchers\launchFilter_psd.py", portManagerPort])  # F3
+
+
+
+# PS C:\Users\Thuis\gTec_EEGpipeline> python -u "c:\Users\Thuis\gTec_EEGpipeline\startPipeline_main.py"
+# Port 25798 is free. The pipeline will be considered the main machine.
+# PS C:\Users\Thuis\gTec_EEGpipeline> [PortManager]: Ports dictionary set with 5 ports: {'host': '127.0.0.1', 'InfoDictionary': 1024, 'EEGData': 1025, 'FilteredData': 1026, 'EventBus': 1027}
+# Exception in thread Thread-5 (run):
+# Traceback (most recent call last):
+#   File "C:\Users\Thuis\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+#     self.run()
+#   File "C:\Users\Thuis\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+#     self._target(*self._args, **self._kwargs)
+#   File "C:\Users\Thuis\gTec_EEGpipeline\classNodes\Acquisition.py", line 46, in run
+#     elif self.device.upper().startswith('UN'):  self._run_unicorn()
+#                                                 ^^^^^^^^^^^^^^^^^^^
+#   File "C:\Users\Thuis\gTec_EEGpipeline\classNodes\Acquisition.py", line 110, in _run_unicorn
+#     self.unicorn = UnicornPy.Unicorn(self.device)
+#                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# UnicornPy.DeviceException: [4, 'UN-2023.07.19 not found.']
+# Exception in thread Thread-4 (run):

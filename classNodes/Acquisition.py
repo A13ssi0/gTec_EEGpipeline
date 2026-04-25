@@ -214,4 +214,3 @@ class Acquisition:
 
     def __del__(self):
         if hasattr(self, 'nautilus') or hasattr(self, 'unicorn'):   self.close()
-
