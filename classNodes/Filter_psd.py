@@ -56,6 +56,8 @@ class Filter_psd:
         self.freq_mask = None
         self.freqs = None
 
+        self.faa = None
+
         self.f_print = True
 
         neededPorts = [
@@ -184,6 +186,9 @@ class Filter_psd:
     # MAIN LOOP
     # =====================================================
 
+    def compute_faa(self, psd):
+        pass
+
     def run(self):
 
         self.request_info()
@@ -219,6 +224,10 @@ class Filter_psd:
                         payload = self.format_output(psd)
 
                         self.Filtered_socket.broadcast(payload)
+
+                        faa = self.compute_faa(psd)
+
+                        
 
                 except Exception as e:
                     print(f"[{self.name}] Processing error: {e}")
