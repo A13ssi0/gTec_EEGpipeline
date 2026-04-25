@@ -11,27 +11,15 @@ portMain = 25798
 genPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 recFolder = os.path.join(genPath, "recordings")
-modelFolder = os.path.join(genPath, "models")
-weightsFolder = os.path.join(genPath, "weights")
-
-
-
 
 runType =  "evaluation" # Default run type (e.g., 'calibration', 'evaluation', 'test')
 task = 'mi_lhrh'  # Default task
 # task = 'TEST'  # Default task
 
-
 subjectCode = 'a5'  # Default subject code
 
 device = 'UN-2023.07.19'
 # device = '  # un na test doubleTest
-model = 'a5.20260113.1039.mi_lhrh.joblib'  # Default model for testing
-
-alpha = 0.985
-weights = 'a5.a4.fusion_weights.20260113.mat'
-
-
 
 
 # ---------------------------------------------------------------------------------------------
@@ -59,31 +47,8 @@ else:
 if device == 'test':    
     subjectCode = 'test' 
     # model = 'modelTest'
-    alpha = 0.96
-    weights = [1]
 
-if device == 'doubleTest':    
-    # subjectCode = 'zzRecTest1' if isMain else 'zzRecTest2'  # Default subject code
-    subjectCode = 'test' 
-    device = 'test'
-    model = 'modelTest'
-    alpha = 0.96
-    weights = [1,1]
-
-
-if isinstance(weights, str) and weights != 'same':  
-    weights = loadmat(os.path.join(weightsFolder, weights))
-    weights = fix_mat(weights['weights'])
-
-
-
-if runType == 'calibration':   alpha = None
-# ---------------------------------------------------------------------------------------------
-
-if 'un' in device.lower():      laplacianPath = f'{genPath}/lapMask8Unicorn.mat' 
-elif 'na' in device.lower():    laplacianPath = f'{genPath}/lapMask16Nautilus.mat'  
-else:                           laplacianPath = f'{genPath}/lapMask8Unicorn.mat' 
-
+laplacianPath = f'{genPath}/lapMask8Unicorn.mat' 
 
 
 # ---------------------------------------------------------------------------------------------
@@ -94,29 +59,10 @@ portDict['InfoDictionary'] = free_ports[0]
 portDict['EEGData'] = free_ports[1]  
 portDict['FilteredData'] = free_ports[2] 
 portDict['EventBus'] = free_ports[3] 
-if isMain:
-    portDict['OutputMapper'] = free_ports[4]  
-    portDict['PercPosX'] = free_ports[5]
-else:
-    portDict['IPAddrMain'] = host
-    portDict['PortMain'] = portMain
-    portDict['IPAddrSecondary'] = host
-
-
-if useMultiplePc and not isMain:  
-        portDict['IPAddrSecondary'] = IPAddr
-        IPAddr = input("Enter the IP address of the main machine: ")
-        portDict['IPAddrMain'] = IPAddr
-       
-
 
 # ---------------------------------------------------------------------------------------------
 
 subprocess.Popen([sys.executable, "classLaunchers\launchPortManager.py", portManagerPort, json.dumps(portDict), str(isMain), str(useMultiplePc)]) # F1
 subprocess.Popen([sys.executable, "classLaunchers\launchAcquisition.py", device, portManagerPort])  # F2
 subprocess.Popen([sys.executable, "classLaunchers\launchRecorder.py", portManagerPort, subjectCode, recFolder, runType, task]) # F5
-if runType == 'evaluation' or runType == 'test': 
-    path = os.path.join(modelFolder,subjectCode,model)
-    subprocess.Popen([sys.executable, "classLaunchers\launchFilter.py", portManagerPort])  # F3
-    subprocess.Popen([sys.executable, "classLaunchers\launchClassifier.py", path, portManagerPort, laplacianPath]) # F6
-    if isMain: subprocess.Popen([sys.executable, "classLaunchers\launchOutputMapper.py", portManagerPort, str(weights), str(alpha)]) # F7
+subprocess.Popen([sys.executable, "classLaunchers\launchFilter.py", portManagerPort])  # F3
