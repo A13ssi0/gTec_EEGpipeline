@@ -1,12 +1,4 @@
-[submodule "riemann_utils"]
-	path = riemann_utils
-	url = ../riemann_utils.git
-	branch = master
 [submodule "py_utils"]
 	path = py_utils
 	url = ../py_utils.git
-	branch = main
-[submodule "fgmdm_riemann"]
-	path = fgmdm_riemann
-	url = ../fgmdm_riemann.git
 	branch = main
