@@ -59,10 +59,12 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=True, classes=None):
     if applyLaplacian:
         pathLaplacian = None
         print(' - Applying Laplacian')  
-
-        if h['device'].startswith('NA'):    pathLaplacian = os.path.join(genPath, 'lapMask16Nautilus.mat')
-        elif h['device'].startswith('UN'):  pathLaplacian = os.path.join(genPath, 'lapMask8Unicorn.mat')
-        elif h['device'].startswith('test'):  pathLaplacian = ''
+        if 'device' not in h: 
+            print(f" - WARNING: No device information found in header. No Laplacian will be applied.")
+            h['device'] = 'unknown'
+        elif str(h['device']).startswith('NA'):    pathLaplacian = os.path.join(genPath, 'lapMask16Nautilus.mat')
+        elif str(h['device']).startswith('UN'):  pathLaplacian = os.path.join(genPath, 'lapMask8Unicorn.mat')
+        # elif str(h['device']).startswith('test'):  pathLaplacian = ''
 
 
         if pathLaplacian is not None :
@@ -193,7 +195,7 @@ def main(filter_order=2, windowsLength=1, applyLaplacian=True, classes=None):
         filename += f'.{len(existing_files)}'
 
 
-    # save(filename, model)
+    save(filename, model)
     
 
 if __name__ == '__main__':

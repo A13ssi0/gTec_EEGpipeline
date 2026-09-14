@@ -17,20 +17,18 @@ weightsFolder = os.path.join(genPath, "weights")
 
 
 
-runType =  "evaluation" # Default run type (e.g., 'calibration', 'evaluation', 'test')
-task = 'mi_lhrh'  # Default task
-# task = 'TEST'  # Default task
+runType =  "test" # Default run type (e.g., 'calibration', 'evaluation', 'test')
+task = 'mi_lhrh_TEST'  # Default task
 
 
-subjectCode = 'a5'  # Default subject code
+subjectCode = 'test'  # Default subject code
 
-device = 'UN-2023.07.19'
+device = 'test'
 # device = '  # un na test doubleTest
-model = 'a5.20260113.1039.mi_lhrh.joblib'  # Default model for testing
 
-alpha = 0.985
-weights = 'a5.a4.fusion_weights.20260113.mat'
-
+model = 'modelTest.joblib'  # Default model for testing
+alpha = 0.99
+weights = 'same'
 
 
 
@@ -58,17 +56,15 @@ else:
 
 if device == 'test':    
     subjectCode = 'test' 
-    # model = 'modelTest'
     alpha = 0.96
     weights = [1]
 
 if device == 'doubleTest':    
-    # subjectCode = 'zzRecTest1' if isMain else 'zzRecTest2'  # Default subject code
     subjectCode = 'test' 
     device = 'test'
     model = 'modelTest'
     alpha = 0.96
-    weights = [1,1]
+    weights = 'same'
 
 
 if isinstance(weights, str) and weights != 'same':  

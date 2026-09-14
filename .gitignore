@@ -1,20 +1,26 @@
 # *.txt
 *.mat
+!data/lapMask8Unicorn.mat
+!data/lapMask16Nautilus.mat
 *.ipynb
 *.m
-*.mat
 *.log
 *.pkl
 *.png
 *.svg
 *.json
 .vscode
+.agents/
+.codex/
 *.pdf
 __pycache__
 spectogramValidation.py
 data/recordings/*
 extra/
 data/models/*
+!data/models/test/
+!data/models/test/modelTest.joblib
+data/questionnaires/
 data/weights/*
 data - Copia/*
-data (Marouane)/*
+for thesis/*

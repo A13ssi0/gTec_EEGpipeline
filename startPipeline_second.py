@@ -18,13 +18,12 @@ weightsFolder = os.path.join(genPath, "weights")
 
 
 runType =  "evaluation" # Default run type (e.g., 'calibration', 'evaluation', 'test')
-task = 'mi_lhrh'  # Default task
+task = 'mi_lhrh_TEST'  # Default task
 
-subjectCode = 'a4'  # Default subject code
+subjectCode = 'test'  # Default subject code
 
-device = 'UN-2023.07.20'
-# device = r'c:\Users\aless\Desktop\gTec_EEGpipeline\data\recordings\a3\20251208\a3.20251208.130058.evaluation.mi_lhrh.mat'  # un na test doubleTest
-model = 'a4.20260113.1039.mi_lhrh.joblib'  # Default model for testing
+device = 'test'  # un na test doubleTest
+model = 'modelTest.joblib'  # Default model for testing
 
 
 
@@ -47,30 +46,6 @@ else:
     portManagerPort = str(portMain)
     isMain = True
     if useMultiplePc:     print(f"[!!!] SECONDARY IP ADDRESS [!!!] : {IPAddr}")
-
-# ---------------------------------------------------------------------------------------------
-# alpha = 0.985
-# weights = [1] 
-
-# if device == 'test':    
-#     subjectCode = 'test' 
-#     # model = 'modelTest'
-#     alpha = 0.96
-#     weights = [1]
-
-# if device == 'doubleTest':    
-#     # subjectCode = 'zzRecTest1' if isMain else 'zzRecTest2'  # Default subject code
-#     subjectCode = 'test' 
-#     device = 'test'
-#     model = 'modelTest'
-#     alpha = 0.96
-#     weights = [1,1]
-
-
-# if isinstance(weights, str):  
-#     weights = loadmat(os.path.join(weightsFolder, weights))
-#     weights = fix_mat(weights['weights'])
-#     weights = weights['normalized']['withoutRest']
 
 
 if runType == 'calibration':   alpha = None
