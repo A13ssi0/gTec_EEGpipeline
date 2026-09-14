@@ -10,8 +10,6 @@
 *.svg
 *.json
 .vscode
-.agents/
-.codex/
 *.pdf
 __pycache__
 spectogramValidation.py
@@ -22,5 +20,4 @@ data/models/*
 !data/models/test/modelTest.joblib
 data/questionnaires/
 data/weights/*
-data - Copia/*
 for thesis/*
