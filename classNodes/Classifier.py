@@ -9,7 +9,8 @@ from py_utils.data_managment import load
 from py_utils.eeg_managment import get_channelsMask
 from py_utils.signal_processing import get_covariance_matrix_traceNorm_online, get_covariance_matrix_lwfNorm_online
 from riemann_utils.covariances import center_covariance_online
-import keyboard, socket, ast, threading
+from utils.telemetry import PipelineTelemetry, timestamp_age_ms
+import keyboard, socket, ast, threading, warnings
 import numpy as np
 from datetime import datetime # for testing
 import time
@@ -17,7 +18,8 @@ import time
 
 
 class Classifier:
-    def __init__(self, modelPath, managerPort=25798, laplacianPath=None, host='127.0.0.1'):
+    def __init__(self, modelPath, managerPort=25798, laplacianPath=None, host='127.0.0.1',
+                 telemetryEnabled=True, telemetryReportSeconds=5, telemetryVerbose=False):
         self.name = 'Classifier'
         self.host = host
         self._stopEvent = threading.Event()
@@ -40,6 +42,9 @@ class Classifier:
         self.isMain = get_isMain(host=self.host, managerPort=managerPort)
         self.multiplePC = get_isMultiplePC(host=self.host, managerPort=managerPort)
         self.managerPort = managerPort
+        self.telemetryEnabled = telemetryEnabled
+        self.telemetryReportSeconds = telemetryReportSeconds
+        self.telemetryVerbose = telemetryVerbose
 
 
         neededPorts = ['FilteredData', 'InfoDictionary', 'OutputMapper', 'host']
@@ -68,6 +73,13 @@ class Classifier:
                 self.info = {}
 
         print(f"[{self.name}] Received info dictionary")
+        self.telemetry = PipelineTelemetry(
+            self.name,
+            self.info['dataChunkSize'] / self.info['SampleRate'],
+            self.telemetryEnabled,
+            self.telemetryReportSeconds,
+            self.telemetryVerbose,
+        )
 
         self.filtSock = wait_for_tcp_server(self.host, self.FilteredPort)
         send_tcp(b'', self.filtSock)
@@ -102,6 +114,7 @@ class Classifier:
         # qw = 0
         while not self._stopEvent.is_set():
             try:
+                processing_start = time.perf_counter()
                 _ = get_covariance_matrix_traceNorm_online(self.buffer.get_data())
 
                 cov = self.SPDmatrix  
@@ -129,13 +142,19 @@ class Classifier:
                 # prob = np.array([value, value])
 
                 send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
+                processing_s = time.perf_counter() - processing_start
 
-                _, matrix = recv_tcp(self.filtSock)
+                ts, matrix = recv_tcp(self.filtSock)
+                input_age_ms = timestamp_age_ms(ts)
                 # if matrix[0,0] % 50 == 0: # For testing 
                 #     previous = datetime.now()
                 #     aa = previous.strftime("%H:%M:%S.%f")# For testing
                 #     print(f" ------  Received {matrix[0,0]} chunks at {aa}.")# For testing
                 self.buffer.add_data(matrix)
+                self.telemetry.tick(
+                    processing_s=processing_s,
+                    transport_delay_ms=input_age_ms,
+                )
                 
             except Exception as e:
                 if not not self._stopEvent.is_set():   print(f"[{self.name}] Data processing error: {e}")
@@ -143,9 +162,9 @@ class Classifier:
 
 
     def start_classifier(self):
-        if self.info['SampleRate']!=self.classifier_dict['fs']:    Warning(f"[{self.name}] Sample rate mismatch: {self.info['SampleRate']} != {self.classifier_dict['fs']}")
+        if self.info['SampleRate']!=self.classifier_dict['fs']:    warnings.warn(f"[{self.name}] Sample rate mismatch: {self.info['SampleRate']} != {self.classifier_dict['fs']}", RuntimeWarning)
         if self.info['dataChunkSize']!=self.classifier_dict['windowsShift']*self.classifier_dict['fs']:    
-            Warning(f"[{self.name}] WindowShift mismatch: {self.info['dataChunkSize']} != {self.classifier_dict['windowsShift']*self.classifier_dict['fs']}")
+            warnings.warn(f"[{self.name}] WindowShift mismatch: {self.info['dataChunkSize']} != {self.classifier_dict['windowsShift']*self.classifier_dict['fs']}", RuntimeWarning)
         channelMask = get_channelsMask(self.classifier_dict['channels'], self.info['channels'])
        
         message = 'FILTERS'
@@ -179,6 +198,7 @@ class Classifier:
             self.classifier_dict['normalizationMethod'] = 'lwf'  # default
         while not self._stopEvent.is_set():
             try:
+                processing_start = time.perf_counter()
                 # kk = time.time()
                 if self.classifier_dict['normalizationMethod']=='trace':    cov = get_covariance_matrix_traceNorm_online(self.buffer.get_data())
                 elif self.classifier_dict['normalizationMethod']=='lwf':      cov = get_covariance_matrix_lwfNorm_online(self.buffer.get_data())
@@ -209,6 +229,7 @@ class Classifier:
                     # print(prob)
                 # print(f"||||||||||||||| [{self.name}]  probabilities: {prob}") # For testing
                 send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock) # for testing
+                processing_s = time.perf_counter() - processing_start
                     # pass # for testing
                 # print(f" ------ [{self.name}] Time for sends: {time.time()-kk_pred}")  # for testing
                 # print(f"||||||||||||||| [{self.name}] probabilities: {self.buffer.get_data()[0,0]}")
@@ -217,7 +238,8 @@ class Classifier:
                 #     print(f" ---- [{self.name}] Sending {self.buffer.get_data()[0,0]} chunks at {aa}.") # for testing
                 # send_tcp(f'PROB/{self.buffer.get_data()[0,0]}/{self.buffer.get_data()[0,0]}', self.probSock) # for testing
 
-                _, matrix = recv_tcp(self.filtSock)
+                ts, matrix = recv_tcp(self.filtSock)
+                input_age_ms = timestamp_age_ms(ts)
                 # if matrix[0,0] % 50 == 0:  # for testing
                 #     aa = datetime.now().strftime("%H:%M:%S.%f") # for testing
                 #     print(f" ------ [{self.name}] Received {matrix[0,0]} chunks at {aa}.") # for testing
@@ -226,6 +248,10 @@ class Classifier:
 
                 if self.laplacian is not None:  matrix = matrix @ self.laplacian
                 self.buffer.add_data(matrix[:, channelMask])
+                self.telemetry.tick(
+                    processing_s=processing_s,
+                    transport_delay_ms=input_age_ms,
+                )
 
 
             except Exception as e:
@@ -238,6 +264,8 @@ class Classifier:
         self._stopEvent.set()
         self.filtSock.close()
         self.probSock.close()
+        if hasattr(self, 'telemetry'):
+            self.telemetry.close()
         print(f"[{self.name}] Finished.")
 
 

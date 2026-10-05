@@ -21,6 +21,9 @@ elif sys.argv[2] == 'same':
 else:
     weights = np.array([float(x) for x in sys.argv[2][2:-2].split()]) if len(sys.argv) > 2 else ['1']
 alpha = float(sys.argv[3]) if len(sys.argv) > 3 else 0.96
+telemetryEnabled = sys.argv[4].lower() == 'true' if len(sys.argv) > 4 else True
+telemetryReportSeconds = float(sys.argv[5]) if len(sys.argv) > 5 else 5
+telemetryVerbose = sys.argv[6].lower() == 'true' if len(sys.argv) > 6 else False
 
 stop_event = threading.Event()
 def on_hotkey():    stop_event.set()
@@ -28,7 +31,9 @@ keyboard.add_hotkey('F7', on_hotkey)
 keyboard.add_hotkey('F12', on_hotkey)
 
 
-noutm = OutputMapper(managerPort=managerPort, weights=weights, alpha=alpha)
+noutm = OutputMapper(managerPort=managerPort, weights=weights, alpha=alpha,
+                     telemetryEnabled=telemetryEnabled, telemetryReportSeconds=telemetryReportSeconds,
+                     telemetryVerbose=telemetryVerbose)
 thread = threading.Thread(target=noutm.run)
 thread.start()
 

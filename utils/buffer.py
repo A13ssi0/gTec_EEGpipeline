@@ -13,18 +13,20 @@ class Buffer:
 
     def add_data(self, new_data):
         n_samples = new_data.shape[0]
-        self.ptr = self.ptr + n_samples
+        if n_samples > self._data.shape[0]:
+            raise ValueError("Buffer overflow: input chunk is larger than the buffer capacity.")
+
+        self.ptr = min(self.ptr + n_samples, self._data.shape[0])
         # if new_data[0,0] % 50 == 0: # For testing
         #     aa = datetime.now().strftime("%H:%M:%S.%f")# For testing
         #     print(f" --------  Buffer received {new_data[0,0]} chunks at {aa}.")# For testing
 
-        if self.ptr > self._data.shape[0]: IndexError("Buffer overflow: Not enough space to add new data.")
         # for row in new_data:    self.file.write(' '.join(map(str, row)) + '\n')
 
         self._data[:-n_samples, :] = self._data[n_samples:, :]
         self._data[-n_samples:, :] = new_data
 
-        if not self.isFull and self.ptr == self._data.shape[0]: 
+        if not self.isFull and self.ptr >= self._data.shape[0]:
             self.isFull = True  # Buffer was filled completely
 
     def get_data(self):
@@ -55,4 +57,3 @@ class BufferVisualizer(Buffer):
         self.ptr = self.ptr + n_samples
 
 
-            

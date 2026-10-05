@@ -8,6 +8,7 @@ except:
 from utils.server import  UDPServer, TCPServer, safeClose_socket, get_serversPort
 from scipy.io import loadmat
 from py_utils.data_managment import fix_mat
+from utils.telemetry import PipelineTelemetry
 # for testing
 import os, time
 from scipy.io import savemat
@@ -15,13 +16,17 @@ from datetime import datetime
 
 
 class Acquisition:
-    def __init__(self, device=None, managerPort=25798, host='127.0.0.1'):
+    def __init__(self, device=None, managerPort=25798, host='127.0.0.1',
+                 telemetryEnabled=True, telemetryReportSeconds=5, telemetryVerbose=False):
         self.name = 'Acquisition'
         self.nSamples = 0
         self.device = device
         self.host = host
         self.info = {}
         self.info['isMapperTCP'] = True
+        self.telemetryEnabled = telemetryEnabled
+        self.telemetryReportSeconds = telemetryReportSeconds
+        self.telemetryVerbose = telemetryVerbose
 
         # self.file = open(r"C:\Users\aless\Desktop\gNautilus\data\recordings\acq_data.txt", "w")
 
@@ -48,6 +53,7 @@ class Acquisition:
 
     def _run_test_mode(self):
         self.SetUnicornSettings()
+        self.telemetry = PipelineTelemetry(self.name, self.info['dataChunkSize'] / self.info['SampleRate'], self.telemetryEnabled, self.telemetryReportSeconds, self.telemetryVerbose)
         dt = self.info['dataChunkSize'] / self.info['SampleRate']
         n_channels = len(self.info['channels'])
         sleep_time = max(0, dt - 0.001)
@@ -75,6 +81,7 @@ class Acquisition:
         self.info['SampleRate'] = header['SampleRate'].item()
         self.info['channels'] = header['channels'].tolist()
         self.info['dataChunkSize'] = header['dataChunkSize'].item()
+        self.telemetry = PipelineTelemetry(self.name, self.info['dataChunkSize'] / self.info['SampleRate'], self.telemetryEnabled, self.telemetryReportSeconds, self.telemetryVerbose)
         # self.info['device'] = self.device
 
         print(f"[{self.name}] Loaded MAT file: {self.device}.")
@@ -122,6 +129,7 @@ class Acquisition:
         channelIndex = [self.unicorn.GetChannelIndex('EEG '+str(i)) for i in range(1,9)] # from 1 to 8
         numberOfAcquiredChannels= self.unicorn.GetNumberOfAcquiredChannels()
         self.SetUnicornSettings()
+        self.telemetry = PipelineTelemetry(self.name, self.info['dataChunkSize'] / self.info['SampleRate'], self.telemetryEnabled, self.telemetryReportSeconds, self.telemetryVerbose)
         receiveBufferBufferLength = self.info['dataChunkSize'] * numberOfAcquiredChannels * 4
         receiveBuffer = bytearray(receiveBufferBufferLength)
 
@@ -149,6 +157,7 @@ class Acquisition:
 
     def _run_nautilus(self):
         self.SetNautilusSettings()
+        self.telemetry = PipelineTelemetry(self.name, self.info['dataChunkSize'] / self.info['SampleRate'], self.telemetryEnabled, self.telemetryReportSeconds, self.telemetryVerbose)
         if self.device == 'na':    self.device = None
 
         self.nautilus = pygds.GDS(gds_device=self.device)
@@ -181,12 +190,14 @@ class Acquisition:
 
     def data_callback(self, data):
         self.nSamples += data.shape[0]
+        if hasattr(self, 'telemetry'):
+            self.telemetry.tick()
         # if data[0,0] % 50 == 0:
         #     aa = datetime.now().strftime("%H:%M:%S.%f")
         #     print(f" -------------------- [{self.name}] Streamed at {data[0,0]} chunks at {aa}.")
         try:    self.EEG_socket.broadcast(data)
         except Exception as e:
-            if not self.Filtered_socket._stopEvent.is_set(): print(f"[{self.name}] Broadcast error: {e}")
+            if not self.EEG_socket._stopEvent.is_set(): print(f"[{self.name}] Broadcast error: {e}")
             self.EEG_socket._stopEvent.set()
             return False
         return True
@@ -200,6 +211,8 @@ class Acquisition:
 
         safeClose_socket(self.InfoDict_socket, name=self.name)
         safeClose_socket(self.EEG_socket, name=self.name)
+        if hasattr(self, 'telemetry'):
+            self.telemetry.close()
 
 
         # self.file.close()

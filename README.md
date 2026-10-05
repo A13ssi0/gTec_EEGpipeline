@@ -170,6 +170,36 @@ The default `subjectCode = "test"` and `model = "modelTest.joblib"` configuratio
 
 Press `F12` to stop the launcher processes. Some individual nodes also define node-specific function-key shortcuts in `classLaunchers/`.
 
+## Pipeline Timing Telemetry
+
+The pipeline includes lightweight timing telemetry. It does not change EEG payloads,
+model inputs, filters, recording output, or the socket protocol.
+
+By default it is quiet during a healthy run: it prints a compact summary when a node
+stops and prints a warning if a stage falls behind. The measurements separate:
+
+- `Acquisition`: source cadence. A warning here points to the headset, driver, or
+  acquisition loop rather than the classifier.
+- `Filter` and `Classifier`: cadence, local processing time, and age of the packet
+  received from the preceding node.
+- `OutputMapper`: completed probability-merge rate and incoming probability age.
+
+The configuration is near the top of each launcher. In `startPipeline_main.py`,
+for example:
+
+```python
+telemetryEnabled = True
+telemetryReportSeconds = 5
+telemetryVerbose = False
+```
+
+Set `telemetryVerbose = True` for one compact summary per interval. Set
+`telemetryEnabled = False` to disable it. The expected cadence is calculated from
+the live acquisition settings (`dataChunkSize / SampleRate`), so it automatically
+adapts when either setting changes. Packet-age measurements across two PCs are only
+an absolute latency measurement when both computers' clocks are synchronized;
+cadence and local processing-time measurements remain reliable on each machine.
+
 ## Device Options
 
 The `device` variable controls the acquisition source:

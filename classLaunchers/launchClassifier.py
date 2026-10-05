@@ -13,6 +13,9 @@ import threading, keyboard
 modelPath = sys.argv[1]
 managerPort = int(sys.argv[2]) 
 laplacianPath = sys.argv[3] if len(sys.argv) > 3 else None
+telemetryEnabled = sys.argv[4].lower() == 'true' if len(sys.argv) > 4 else True
+telemetryReportSeconds = float(sys.argv[5]) if len(sys.argv) > 5 else 5
+telemetryVerbose = sys.argv[6].lower() == 'true' if len(sys.argv) > 6 else False
 # if modelPath.endswith('test'): modelPath = 'test'
 
 stop_event = threading.Event()
@@ -20,7 +23,9 @@ def on_hotkey():    stop_event.set()
 keyboard.add_hotkey('F6', on_hotkey)
 keyboard.add_hotkey('F12', on_hotkey)
 
-ncls = Classifier(modelPath=modelPath, managerPort=managerPort, laplacianPath=laplacianPath)
+ncls = Classifier(modelPath=modelPath, managerPort=managerPort, laplacianPath=laplacianPath,
+                  telemetryEnabled=telemetryEnabled, telemetryReportSeconds=telemetryReportSeconds,
+                  telemetryVerbose=telemetryVerbose)
 thread = threading.Thread(target=ncls.run)
 thread.start()
 

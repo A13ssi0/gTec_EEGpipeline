@@ -93,15 +93,16 @@ class Recorder:
         print("Files closed and saved successfully.")
 
     def join_Txts(self):
-        data = np.loadtxt(f"{self.filePath}.txt")
-        timestamps = np.loadtxt(f"{self.filePath}_timestamp.txt", dtype=str)
+        data = np.atleast_2d(np.loadtxt(f"{self.filePath}.txt"))
+        timestamps = np.atleast_1d(np.loadtxt(f"{self.filePath}_timestamp.txt", dtype=str))
         ev = np.loadtxt(f"{self.filePath}_events.txt", dtype=str)
         events = {'DUR': [], 'POS': [], 'TYP': []}
 
         increment = timedelta(seconds=1/self.info['SampleRate'])
         for i in range(1,len(timestamps)):  timestamps[i] = (datetime.strptime(timestamps[i-1], "%H:%M:%S.%f") + increment).strftime("%H:%M:%S.%f")
 
-        if len(ev)>0:
+        if ev.size > 0:
+            ev = np.atleast_2d(ev)
             ev_times = np.array([datetime.strptime(t, "%H:%M:%S.%f") for t in ev[:,0]])
             timestamps_dt = np.array([datetime.strptime(t, "%H:%M:%S.%f") for t in timestamps])
             pos = np.array([int(np.argmin(np.abs([(t - ev_time).total_seconds() for t in timestamps_dt]))) for ev_time in ev_times])

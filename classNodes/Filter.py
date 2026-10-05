@@ -1,13 +1,18 @@
-import socket, ast
+import socket, ast, time
 from utils.server import TCPServer, recv_udp, recv_tcp, wait_for_udp_server, wait_for_tcp_server, send_udp, send_tcp, safeClose_socket, get_serversPort
+from utils.telemetry import PipelineTelemetry, timestamp_age_ms
 import numpy as np # For testing
 from datetime import datetime # For testing
 
 class Filter:
-    def __init__(self, managerPort=25798, host='127.0.0.1'):
+    def __init__(self, managerPort=25798, host='127.0.0.1', telemetryEnabled=True,
+                 telemetryReportSeconds=5, telemetryVerbose=False):
         self.host = host
         self.name = 'Filter'
         self.filter = []
+        self.telemetryEnabled = telemetryEnabled
+        self.telemetryReportSeconds = telemetryReportSeconds
+        self.telemetryVerbose = telemetryVerbose
 
         neededPorts = ['InfoDictionary', 'EEGData', 'FilteredData', 'host']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
@@ -34,6 +39,7 @@ class Filter:
                 print(f"[{self.name}] Failed to parse info: {e}")
                 self.info = {}
         print(f"[{self.name}] Received info dictionary")
+        self.telemetry = PipelineTelemetry(self.name, self.info['dataChunkSize'] / self.info['SampleRate'], self.telemetryEnabled, self.telemetryReportSeconds, self.telemetryVerbose)
 
         self.Filtered_socket.start()
 
@@ -43,7 +49,9 @@ class Filter:
 
             while not self.Filtered_socket._stopEvent.is_set():
                 try:
-                    _, matrix = recv_tcp(tcp_sock)
+                    ts, matrix = recv_tcp(tcp_sock)
+                    input_age_ms = timestamp_age_ms(ts)
+                    processing_start = time.perf_counter()
 
                     # t_chunk = matrix[0,0] # For testing
 
@@ -64,6 +72,10 @@ class Filter:
                     except Exception as e:
                         if not self.Filtered_socket._stopEvent.is_set(): print(f"[{self.name}] Broadcast error: {e}")
                         self.Filtered_socket._stopEvent.set()
+                    self.telemetry.tick(
+                        processing_s=time.perf_counter() - processing_start,
+                        transport_delay_ms=input_age_ms,
+                    )
                 # except TimeoutError:
                 #     continue
                 except Exception as e:
@@ -77,6 +89,8 @@ class Filter:
 
     def close(self):
         safeClose_socket(self.Filtered_socket, name=self.name)
+        if hasattr(self, 'telemetry'):
+            self.telemetry.close()
 
 
     def __del__(self):

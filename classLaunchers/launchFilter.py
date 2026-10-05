@@ -10,6 +10,9 @@ from classNodes.Filter import Filter
 import keyboard, threading
 
 managerPort = int(sys.argv[1]) if len(sys.argv) > 1 else 25798
+telemetryEnabled = sys.argv[2].lower() == 'true' if len(sys.argv) > 2 else True
+telemetryReportSeconds = float(sys.argv[3]) if len(sys.argv) > 3 else 5
+telemetryVerbose = sys.argv[4].lower() == 'true' if len(sys.argv) > 4 else False
 
 
 
@@ -19,7 +22,8 @@ keyboard.add_hotkey('F3', on_hotkey)
 keyboard.add_hotkey('F12', on_hotkey)
 
 
-nf = Filter(managerPort=managerPort)
+nf = Filter(managerPort=managerPort, telemetryEnabled=telemetryEnabled,
+            telemetryReportSeconds=telemetryReportSeconds, telemetryVerbose=telemetryVerbose)
 thread = threading.Thread(target=nf.run)
 thread.start()
 

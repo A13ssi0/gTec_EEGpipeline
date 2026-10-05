@@ -297,6 +297,8 @@ class TCPClientHandler(threading.Thread):
 
 
     def manage_probabilities(self, ts, msg):
+        if hasattr(self.server.node, 'record_probability_timestamp'):
+            self.server.node.record_probability_timestamp(ts)
         prob = {'isNew': True, 'ts': ts, 'values': []}
         for part in msg.split('/')[1:]:     prob['values'].append(float(part))
 
@@ -431,6 +433,7 @@ def wait_for_tcp_server(host, port, timeout=10):
             #     msg = recv_tcp(sock)[1]
             return sock
         except (ConnectionRefusedError, socket.timeout):
+            sock.close()
             time.sleep(0.1)
         # finally:
         #     sock.close()

@@ -14,6 +14,9 @@ if len(sys.argv) < 2:                                   device = 'test'  # Defau
 elif sys.argv[1] == 'None' or len(sys.argv[1]) == 0:     device = None
 else:                                                   device = sys.argv[1]
 managerPort = int(sys.argv[2]) if len(sys.argv) > 2 else 25798
+telemetryEnabled = sys.argv[3].lower() == 'true' if len(sys.argv) > 3 else True
+telemetryReportSeconds = float(sys.argv[4]) if len(sys.argv) > 4 else 5
+telemetryVerbose = sys.argv[5].lower() == 'true' if len(sys.argv) > 5 else False
 
 
 stop_event = threading.Event()
@@ -21,7 +24,8 @@ def on_hotkey():    stop_event.set()
 keyboard.add_hotkey('F1', on_hotkey)
 keyboard.add_hotkey('F12', on_hotkey)
 
-na = Acquisition(device=device, managerPort=managerPort)
+na = Acquisition(device=device, managerPort=managerPort, telemetryEnabled=telemetryEnabled,
+                 telemetryReportSeconds=telemetryReportSeconds, telemetryVerbose=telemetryVerbose)
 thread = threading.Thread(target=na.run)
 thread.start()
 

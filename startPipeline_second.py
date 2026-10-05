@@ -25,6 +25,11 @@ subjectCode = 'test'  # Default subject code
 device = 'test'  # un na test doubleTest
 model = 'modelTest.joblib'  # Default model for testing
 
+# Timing telemetry: quiet unless a stage falls behind; verbose prints one summary per interval.
+telemetryEnabled = True
+telemetryReportSeconds = 5
+telemetryVerbose = False
+
 
 
 # ---------------------------------------------------------------------------------------------
@@ -51,8 +56,8 @@ else:
 if runType == 'calibration':   alpha = None
 # ---------------------------------------------------------------------------------------------
 
-if 'un' in device.lower():      laplacianPath = f'{genPath}/lapMask8Unicorn.mat' 
-elif 'na' in device.lower():    laplacianPath = f'{genPath}/lapMask16Nautilus.mat'  
+if isinstance(device, str) and 'un' in device.lower():      laplacianPath = f'{genPath}/lapMask8Unicorn.mat'
+elif isinstance(device, str) and 'na' in device.lower():    laplacianPath = f'{genPath}/lapMask16Nautilus.mat'
 else:                           laplacianPath = f'{genPath}/lapMask8Unicorn.mat'
 
 
@@ -83,11 +88,14 @@ if useMultiplePc and not isMain:
 
 # ---------------------------------------------------------------------------------------------
 
-subprocess.Popen([sys.executable, "classLaunchers\launchPortManager.py", portManagerPort, json.dumps(portDict), str(isMain), str(useMultiplePc)]) # F1
-subprocess.Popen([sys.executable, "classLaunchers\launchAcquisition.py", device, portManagerPort])  # F2
-subprocess.Popen([sys.executable, "classLaunchers\launchRecorder.py", portManagerPort, subjectCode, recFolder, runType, task]) # F5
+launchersPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "classLaunchers")
+deviceArgument = '' if device is None else str(device)
+telemetryArguments = [str(telemetryEnabled), str(telemetryReportSeconds), str(telemetryVerbose)]
+subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchPortManager.py"), portManagerPort, json.dumps(portDict), str(isMain), str(useMultiplePc)]) # F1
+subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchAcquisition.py"), deviceArgument, portManagerPort, *telemetryArguments])  # F2
+subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchRecorder.py"), portManagerPort, subjectCode, recFolder, runType, task]) # F5
 if runType == 'evaluation' or runType == 'test': 
     path = os.path.join(modelFolder,subjectCode,model)
-    subprocess.Popen([sys.executable, "classLaunchers\launchFilter.py", portManagerPort])  # F3
-    subprocess.Popen([sys.executable, "classLaunchers\launchClassifier.py", path, portManagerPort, laplacianPath]) # F6
+    subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchFilter.py"), portManagerPort, *telemetryArguments])  # F3
+    subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchClassifier.py"), path, portManagerPort, laplacianPath, *telemetryArguments]) # F6
     # if isMain: subprocess.Popen([sys.executable, "classLaunchers\launchOutputMapper.py", portManagerPort, str(weights), str(alpha)]) # F7

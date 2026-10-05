@@ -1,4 +1,4 @@
-import subprocess, sys, json 
+import subprocess, sys, json, os
 from utils.server import get_free_ports
 
 
@@ -12,6 +12,10 @@ portManagerPort = str(25798)
 device = 'UN-2023.07.19'  # Default device foùr testing
 lenWindowVisualizer = '10' 
 
+telemetryEnabled = True
+telemetryReportSeconds = 5
+telemetryVerbose = False
+
 # ---------------------------------------------------------------------------------------------
 
 portDict = {}   
@@ -24,10 +28,12 @@ portDict['EventBus'] = free_ports[3]
 
 # ---------------------------------------------------------------------------------------------
 
-subprocess.Popen([sys.executable, "classLaunchers\launchPortManager.py", portManagerPort, json.dumps(portDict)]) # F1
-subprocess.Popen([sys.executable, "classLaunchers\launchAcquisition.py", device, portManagerPort])  # F2
-subprocess.Popen([sys.executable, "classLaunchers\launchFilter.py", portManagerPort])  # F3
-subprocess.Popen([sys.executable, "classLaunchers\launchVisualizer.py", portManagerPort, lenWindowVisualizer]) # F4
+launchersPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "classLaunchers")
+telemetryArguments = [str(telemetryEnabled), str(telemetryReportSeconds), str(telemetryVerbose)]
+subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchPortManager.py"), portManagerPort, json.dumps(portDict)]) # F1
+subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchAcquisition.py"), device, portManagerPort, *telemetryArguments])  # F2
+subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchFilter.py"), portManagerPort, *telemetryArguments])  # F3
+subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchVisualizer.py"), portManagerPort, lenWindowVisualizer]) # F4
 
 
 

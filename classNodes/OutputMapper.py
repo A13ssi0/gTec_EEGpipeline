@@ -1,12 +1,13 @@
 import os
-import socket
-from utils.server import TCPServer, UDPServer, safeClose_socket, get_serversPort, get_isMultiplePC, wait_for_tcp_server, send_tcp, recv_tcp
+import socket, ast
+from utils.server import TCPServer, UDPServer, safeClose_socket, get_serversPort, get_isMultiplePC, wait_for_tcp_server, wait_for_udp_server, send_tcp, send_udp, recv_tcp, recv_udp
 import threading, time, numpy as np
 from datetime import datetime # for testing
-from py_utils.plots_prints import fmt
+from utils.telemetry import PipelineTelemetry
 
 class OutputMapper:
-    def __init__(self, managerPort=25798, weights=[1], alpha=0.96, host='127.0.0.1'):
+    def __init__(self, managerPort=25798, weights=[1], alpha=0.96, host='127.0.0.1',
+                 telemetryEnabled=True, telemetryReportSeconds=5, telemetryVerbose=False):
         self.host = host
         self.name = 'OutputMapper'
         self.weights = np.array(weights)
@@ -19,6 +20,9 @@ class OutputMapper:
         self._print_count = 0
         self._print_timer = time.time()
         self._prints_per_sec = 0.0
+        self.telemetry = PipelineTelemetry(self.name, enabled=telemetryEnabled,
+                                           report_interval_s=telemetryReportSeconds,
+                                           verbose=telemetryVerbose)
 
 
         parent_dir = os.path.dirname(os.path.abspath(''))
@@ -35,21 +39,24 @@ class OutputMapper:
         # self.fileInt = open(f"{filePath}_probInt.txt", "w")
         # self.fileTimestamp = open(f"{filePath}_timestamp.txt", "w")
 
-        neededPorts = ['OutputMapper', 'PercPosX', 'host', 'EventBus']
+        neededPorts = ['OutputMapper', 'PercPosX', 'InfoDictionary', 'host', 'EventBus']
         self.init_sockets(managerPort=managerPort, neededPorts=neededPorts)
 
-        if len(self.weights) > 2 :  Warning(f"[{self.name}] Warning: More than 2 weights provided, this may lead to unexpected behavior on the mapper output. It is recommended to use maximum 2 classes.") 
+        if len(self.weights) > 2:
+            print(f"[{self.name}] Warning: More than 2 weights provided; mapper output is designed for at most 2 classifiers.")
 
 
     def init_sockets(self, managerPort, neededPorts):
         portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
         multiplePC = get_isMultiplePC(host=self.host, managerPort=managerPort)
+        self.infoHost = portDict['host'] if portDict['host'] is not None else self.host
 
         if multiplePC:   self.host = '0.0.0.0'
         elif portDict['host'] is not None:    self.host = portDict['host']
 
         self.Prob_socket = TCPServer(host=self.host, port=portDict['OutputMapper'], serverName=self.name, node=self)
         self.PercX_socket = TCPServer(host=self.host, port=portDict['PercPosX'], serverName=self.name, node=self)
+        self.InfoDictPort = portDict['InfoDictionary']
 
         self.events = wait_for_tcp_server(self.host, portDict['EventBus'])
         data = {'alpha': self.alpha, 'weights': self.weights.tolist()}
@@ -58,6 +65,15 @@ class OutputMapper:
 
 
     def run(self):
+        wait_for_udp_server(self.infoHost, self.InfoDictPort)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
+            send_udp(udp_sock, (self.infoHost, self.InfoDictPort), "GET_INFO")
+            _, raw_info, _ = recv_udp(udp_sock)
+        try:
+            info = ast.literal_eval(raw_info)
+            self.telemetry.set_expected_period(info['dataChunkSize'] / info['SampleRate'])
+        except Exception as e:
+            print(f"[{self.name}] Telemetry could not read acquisition settings: {e}")
         self.Prob_socket.start()
         self.PercX_socket.start()
         threading.Thread(target=self.listen_reset, args=(self.events, self.reset_event), daemon=True).start()
@@ -67,7 +83,13 @@ class OutputMapper:
         # old_timer = time.time()
         weighted_probabilities = np.array([np.nan, np.nan])
 
-        while len(self.probabilities) != len(self.weights) : time.sleep(0.1)
+        while (len(self.probabilities) != len(self.weights)
+               and not self.Prob_socket._stopEvent.is_set()
+               and not self.PercX_socket._stopEvent.is_set()):
+            time.sleep(0.1)
+
+        if self.Prob_socket._stopEvent.is_set() or self.PercX_socket._stopEvent.is_set():
+            return
 
         self._print_timer = time.time()
         self.new_data_event.clear()
@@ -84,6 +106,7 @@ class OutputMapper:
                 
 
                 if self.new_data_event.is_set():
+                    processing_start = time.perf_counter()
                     # self._print_count += 1
                     probabilities = np.array([prob['values'] for prob in self.probabilities])
                     weighted_avg = self.weighted_avg(probabilities, self.weights, axis=0)
@@ -128,22 +151,7 @@ class OutputMapper:
                     #     self._print_count = 0
                     #     self._print_timer = now
                              
-                    wps = 1/(time.time() - self._print_timer) 
-                    if 23 < wps < 28:
-                       wpsString = f"Wind/sec:{wps:.2f},    "
-                    else:
-                       wpsString = f"\033[31mWind/sec:{wps:.2f}\033[0m,    "
-
-
-                    print(
-                        f"[{self.name}]  "
-                        f"Prob:{fmt(probabilities)},   "
-                        f"WAv:{fmt(weighted_avg)},   "
-                        f"Integrated:{fmt(self.integratedProb)},   "
-                        f"PercPosX:{self.percPosX:.3f},    "
-                        f"{wpsString}"
-                        # f"PPS:{self._prints_per_sec:.2f}"
-                    )
+                    self.telemetry.tick(processing_s=time.perf_counter() - processing_start)
 
                     self._print_timer = time.time()                    
                     for prob in self.probabilities: prob['isNew'] = False
@@ -157,6 +165,9 @@ class OutputMapper:
         # weights[k] =  0
         # if (weights==0).all():   return np.array([np.nan, np.nan])
         return np.average(values, axis=axis, weights=weights)
+
+    def record_probability_timestamp(self, timestamp):
+        self.telemetry.record_transport_timestamp(timestamp)
     
     def listen_reset(self, sock, reset_event):
         while not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():
@@ -179,6 +190,7 @@ class OutputMapper:
     def close(self):
         safeClose_socket(self.Prob_socket, name=self.name)
         safeClose_socket(self.PercX_socket, name=self.name) 
+        self.telemetry.close()
         self.close_files()
 
 
