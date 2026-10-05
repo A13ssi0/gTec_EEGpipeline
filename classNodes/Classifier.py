@@ -36,7 +36,8 @@ class Classifier:
         self.buffer = Buffer((self.classifier_dict['windowsLength']*self.classifier_dict['fs'], len(self.classifier_dict['channels'])))
 
         self.classifier = self.classifier_dict['fgmdm'] if modelPath!='test' else None
-        self.laplacian = loadmat(laplacianPath)['lapMask'] if laplacianPath and modelPath!='test' else None
+        if self.classifier is not None: self.set_single_job(self.classifier)
+        self.laplacian = self.get_laplacian(laplacianPath) if modelPath!='test' else None
         self.rejectionThreshold = self.classifier_dict['rejectionThreshold'] if modelPath!='test' else None
 
         self.isMain = get_isMain(host=self.host, managerPort=managerPort)
@@ -50,6 +51,35 @@ class Classifier:
         neededPorts = ['FilteredData', 'InfoDictionary', 'OutputMapper', 'host']
         self.init_sockets(managerPort=managerPort,neededPorts=neededPorts)
       
+
+    def set_single_job(self, classifier):
+        # Models trained with njobs=-1 would spawn joblib workers on every online prediction (~75ms vs <1ms per call)
+        classifier.njobs = 1
+        for model in classifier.mdl:
+            model.n_jobs = 1
+            if hasattr(model, '_mdm'):  model._mdm.n_jobs = 1
+
+
+    def get_laplacian(self, laplacianPath):
+        # The model's own Laplacian guarantees the same spatial filter as training (identity = none applied)
+        if self.classifier_dict.get('laplacian') is not None:
+            laplacian = np.asarray(self.classifier_dict['laplacian'])
+            if np.array_equal(laplacian, np.eye(laplacian.shape[0])):
+                print(f"[{self.name}] Model was trained without Laplacian: none applied")
+                return None
+            print(f"[{self.name}] Using Laplacian saved in the model")
+            return laplacian
+        # Older models do not store it: fall back to the device mask
+        if laplacianPath:
+            print(f"[{self.name}] Model has no Laplacian stored, using device mask: {laplacianPath}")
+            return loadmat(laplacianPath)['lapMask']
+        return None
+
+
+    def preprocess(self, matrix, channelMask):
+        if self.laplacian is not None:  matrix = matrix @ self.laplacian
+        return matrix[:, channelMask]
+
 
     def init_sockets(self, managerPort, neededPorts):
         portDict = get_serversPort(host=self.host, managerPort=managerPort, neededPorts=neededPorts)
@@ -79,6 +109,7 @@ class Classifier:
             self.telemetryEnabled,
             self.telemetryReportSeconds,
             self.telemetryVerbose,
+            check_cadence=False,
         )
 
         self.filtSock = wait_for_tcp_server(self.host, self.FilteredPort)
@@ -86,8 +117,8 @@ class Classifier:
         send_tcp(b'FILTERS', self.filtSock)
         print(f"[{self.name}] Connected to data source.")
 
-        if self.multiplePC and not self.isMain:     IPAddrMain = get_serversPort(host=self.host, managerPort=self.managerPort, neededPorts=['IPAddrMain'])
-        else:                                       IPAddrMain = self.host
+        if self.multiplePC and not self.isMain:     IPAddrMain = get_serversPort(host=self.host, managerPort=self.managerPort, neededPorts=['IPAddrMain'])['IPAddrMain']
+        else:                                      IPAddrMain = self.host
 
         self.probSock = wait_for_tcp_server(IPAddrMain, self.MapperPort)
         print(f"[{self.name}] Connected to output mapper. Starting classifier loop...")
@@ -102,7 +133,7 @@ class Classifier:
         if self.isMain: keyboardCommands = ['left', 'right']
         else:           keyboardCommands = ['down', 'up']
 
-        while not self.buffer.isFull:
+        while not self.buffer.isFull and not self._stopEvent.is_set():
             _, matrix = recv_tcp(self.filtSock)
             # if matrix[0,0] % 50 == 0: # For testing 
             #     previous = datetime.now()
@@ -157,7 +188,7 @@ class Classifier:
                 )
                 
             except Exception as e:
-                if not not self._stopEvent.is_set():   print(f"[{self.name}] Data processing error: {e}")
+                if not self._stopEvent.is_set():   print(f"[{self.name}] Data processing error: {e}")
                 break
 
 
@@ -166,36 +197,42 @@ class Classifier:
         if self.info['dataChunkSize']!=self.classifier_dict['windowsShift']*self.classifier_dict['fs']:    
             warnings.warn(f"[{self.name}] WindowShift mismatch: {self.info['dataChunkSize']} != {self.classifier_dict['windowsShift']*self.classifier_dict['fs']}", RuntimeWarning)
         channelMask = get_channelsMask(self.classifier_dict['channels'], self.info['channels'])
-       
+        if self.laplacian is not None and self.laplacian.shape[0] != len(self.info['channels']):
+            raise ValueError(f"[{self.name}] Laplacian is {self.laplacian.shape[0]}x{self.laplacian.shape[1]} but the device streams {len(self.info['channels'])} channels")
+
+        order = f"/ord{self.classifier_dict.get('filter_order', 2)}"  # 2 = training default, for models that do not store it
         message = 'FILTERS'
         if self.classifier_dict['bandPass']:
             hp = self.classifier_dict['bandPass'][0][0]
             lp = self.classifier_dict['bandPass'][0][1]
-            cutHp = f'/hp{hp}' 
-            cutLp = f'/lp{lp}' 
-            send_tcp(f'{message}{cutHp}{cutLp}'.encode('utf-8'), self.filtSock)
+            cutHp = f'/hp{hp}'
+            cutLp = f'/lp{lp}'
+            send_tcp(f'{message}{cutHp}{cutLp}{order}'.encode('utf-8'), self.filtSock)
             message = 'APPEND_FILTERS'
         if self.classifier_dict['stopBand']:
             hp = self.classifier_dict['stopBand'][0][0]
             lp = self.classifier_dict['stopBand'][0][1]
-            cutHp = f'/hp{hp}' 
-            cutLp = f'/lp{lp}' 
-            send_tcp(f'{message}{cutHp}{cutLp}/bstop'.encode('utf-8'), self.filtSock)
+            cutHp = f'/hp{hp}'
+            cutLp = f'/lp{lp}'
+            send_tcp(f'{message}{cutHp}{cutLp}{order}/bstop'.encode('utf-8'), self.filtSock)
 
-        while not self.buffer.isFull:
+        if 'normalizationMethod' not in self.classifier_dict:
+            self.classifier_dict['normalizationMethod'] = 'lwf'  # default
+        if self.classifier_dict['normalizationMethod'] not in ('trace', 'lwf'):
+            raise ValueError(f"[{self.name}] Unknown normalizationMethod '{self.classifier_dict['normalizationMethod']}' (expected 'trace' or 'lwf')")
+
+        while not self.buffer.isFull and not self._stopEvent.is_set():
             try:
                 _, matrix = recv_tcp(self.filtSock)
-                # if self.laplacian is not None:  matrix = matrix @ self.laplacian
-                self.buffer.add_data(matrix[:, channelMask])
+                self.buffer.add_data(self.preprocess(matrix, channelMask))
             except TimeoutError:
                 continue
             except Exception as e:
-                print(f"[{self.name}] Data processing error: {e}")
-                       
+                if not self._stopEvent.is_set():   print(f"[{self.name}] Data processing error: {e}")
+                return
+
 
         # print(f"||||||||||||||| [{self.name}]  BUFFER FULLLLLLLLLL: {matrix[0,0]}") # For testing
-        if 'normalizationMethod' not in self.classifier_dict:
-            self.classifier_dict['normalizationMethod'] = 'lwf'  # default
         while not self._stopEvent.is_set():
             try:
                 processing_start = time.perf_counter()
@@ -246,8 +283,7 @@ class Classifier:
 
                 # print(f"||||||||||||||| [{self.name}]  matrix: {matrix[0,0]}") # For testing
 
-                if self.laplacian is not None:  matrix = matrix @ self.laplacian
-                self.buffer.add_data(matrix[:, channelMask])
+                self.buffer.add_data(self.preprocess(matrix, channelMask))
                 self.telemetry.tick(
                     processing_s=processing_s,
                     transport_delay_ms=input_age_ms,

@@ -15,6 +15,9 @@ subjectCode = sys.argv[2] if len(sys.argv) > 2 else "zzRecTest"  # Default file 
 recFolder = sys.argv[3] if len(sys.argv) > 3 else 'C:/Users/aless/Desktop/gNautilus/data/recordings/' # Default folder for recordings
 runType = sys.argv[4] if len(sys.argv) > 4 else 'test'  # Default run type if not provided
 task = sys.argv[5] if len(sys.argv) > 5 else 'mi_bfbh'  # Default task if not provided
+telemetryEnabled = sys.argv[6].lower() == 'true' if len(sys.argv) > 6 else True
+telemetryReportSeconds = float(sys.argv[7]) if len(sys.argv) > 7 else 5
+telemetryVerbose = sys.argv[8].lower() == 'true' if len(sys.argv) > 8 else False
 
 
 stop_event = threading.Event()
@@ -22,7 +25,8 @@ def on_hotkey():    stop_event.set()
 keyboard.add_hotkey('F5', on_hotkey)
 keyboard.add_hotkey('F12', on_hotkey)
 
-nrec = Recorder(managerPort=managerPort, subjectCode=subjectCode, recFolder=recFolder, runType=runType, task=task)
+nrec = Recorder(managerPort=managerPort, subjectCode=subjectCode, recFolder=recFolder, runType=runType, task=task,
+                telemetryEnabled=telemetryEnabled, telemetryReportSeconds=telemetryReportSeconds, telemetryVerbose=telemetryVerbose)
 thread = threading.Thread(target=nrec.run)
 thread.start()
 

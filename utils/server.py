@@ -28,7 +28,7 @@ class UDPServer(threading.Thread):
         self.clientList = []
 
     def run(self):
-        lastErrorAddr = None
+        lastErrorAddr, addr = None, None
         try:
             while not self._stopEvent.is_set():
                 try:
@@ -62,7 +62,7 @@ class UDPServer(threading.Thread):
             print(f"[{self.serverName}] Closed.")
 
     def broadcast(self, message):
-        for client in self.clientList:
+        for client in self.clientList.copy():
             # print(f"[{self.serverName}] Broadcasting to {client}: {message}")
             try:    send_udp(self.sock, client, message)
             except Exception as e:
@@ -128,13 +128,14 @@ class TCPServer(threading.Thread):
                 try:
                     conn, addr = self.sock.accept()
                     conn.settimeout(0.1)
+                    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # send each small chunk immediately
                     with self.clients_lock: self.clients.append(conn)
                     print(f"[+][{self.serverName}] Client connected: {addr}")
                     self.choose_handler(conn, addr)
 
                 except socket.timeout:  continue
                 except Exception as e:
-                    if self._stopEvent.is_set(): print(f"[{self.serverName}] Accept error: {e}")
+                    if not self._stopEvent.is_set(): print(f"[{self.serverName}] Accept error: {e}")
         finally:
             self.cleanup()
             print(f"[{self.serverName}] Closed.")
@@ -272,22 +273,18 @@ class TCPClientHandler(threading.Thread):
                 if self.server.node.filter :    print(f"[{self.server.serverName}] Filter reset")
                 self.server.node.filter = []
                 return
-            if len(parts) == 4 and parts[-1] == 'bstop':
-                hp = int(parts[1][2:])
-                lp = int(parts[2][2:])
-                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['SampleRate'], 'bandstop')
-            elif len(parts) == 3:
-                hp = int(parts[1][2:])
-                lp = int(parts[2][2:])
-                filt = RealTimeButterFilter(2, np.array([hp, lp]), self.server.node.info['SampleRate'], 'bandpass')
-            elif parts[1].startswith('hp'):
-                hp = int(parts[1][2:])
-                filt = RealTimeButterFilter(2, hp, self.server.node.info['SampleRate'], 'highpass')
-            elif parts[1].startswith('lp'):
-                lp = int(parts[1][2:])
-                filt = RealTimeButterFilter(2, lp, self.server.node.info['SampleRate'], 'lowpass')
-            else:
-                return
+            # Format: FILTERS[/hp<Hz>][/lp<Hz>][/ord<n>][/bstop], parts in any order, order defaults to 2
+            hp, lp, order, isStop = None, None, 2, False
+            for part in parts[1:]:
+                if   part.startswith('hp'):     hp = float(part[2:])
+                elif part.startswith('lp'):     lp = float(part[2:])
+                elif part.startswith('ord'):    order = int(part[3:])
+                elif part == 'bstop':           isStop = True
+            fs = self.server.node.info['SampleRate']
+            if hp is not None and lp is not None:   filt = RealTimeButterFilter(order, np.array([hp, lp]), fs, 'bandstop' if isStop else 'bandpass')
+            elif hp is not None:                    filt = RealTimeButterFilter(order, hp, fs, 'highpass')
+            elif lp is not None:                    filt = RealTimeButterFilter(order, lp, fs, 'lowpass')
+            else:                                   return
             if append:  self.server.node.filter.append(filt)
             else:       self.server.node.filter = [filt]
             print(f"[{self.server.serverName}] Filter set: {msg}")
@@ -302,14 +299,16 @@ class TCPClientHandler(threading.Thread):
         prob = {'isNew': True, 'ts': ts, 'values': []}
         for part in msg.split('/')[1:]:     prob['values'].append(float(part))
 
-        if not hasattr(self, 'probId'):     
-            self.probId = len(self.server.node.probabilities)
-            self.server.node.probabilities.append(prob)
-        else:
-            self.server.node.probabilities[self.probId] = prob
+        node = self.server.node
+        with node.prob_lock:    # the mapper reads and consumes under the same lock: no update can slip in between
+            if not hasattr(self, 'probId'):
+                self.probId = len(node.probabilities)
+                node.probabilities.append(prob)
+            else:
+                node.probabilities[self.probId] = prob
 
-        if all(proba['isNew'] for proba in self.server.node.probabilities):
-            self.server.node.new_data_event.set()
+            if all(proba['isNew'] for proba in node.probabilities):
+                node.new_data_event.set()
 
 
 
@@ -423,6 +422,7 @@ def wait_for_tcp_server(host, port, timeout=10):
         sock.settimeout(3)
         try:
             sock.connect((host, port))
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # send each small message immediately
             # send_tcp(b'', sock) 
             send_tcp(b'READY', sock) 
             # msg = recv_tcp(sock)[1]
@@ -481,17 +481,26 @@ def safeClose_socket(sock, name='Socket', timeout=0.5):
     except Exception as e:
         print(f"[{name}] Socket close error: {e}")
 
-def get_serversPort(host, managerPort, neededPorts):
+def get_serversPort(host, managerPort, neededPorts, timeout=30):
+    # A port can be registered later (e.g. a secondary PortManager still fetching it from the main machine): wait for it
     portDict = {port: None for port in neededPorts}
     wait_for_udp_server(host, managerPort)
+    deadline = time.time() + timeout
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-        for port_name in portDict.keys():
-            send_udp(udp_sock, (host, managerPort), f"GET_PORT/{port_name}")
-            _, port_info, _ = recv_udp(udp_sock)
-            if port_info is None: continue
-            elif '.' not in port_info:  port_info = int(port_info) 
-            portDict[port_name] = port_info
-    return portDict
+        udp_sock.settimeout(1.0)
+        while True:
+            for port_name in [name for name, value in portDict.items() if value is None]:
+                try:
+                    send_udp(udp_sock, (host, managerPort), f"GET_PORT/{port_name}")
+                    _, port_info, _ = recv_udp(udp_sock)
+                except (socket.timeout, ConnectionResetError):
+                    continue
+                if port_info == 'None':     continue    # not registered (yet)
+                portDict[port_name] = int(port_info) if '.' not in port_info else port_info
+            missing = [name for name, value in portDict.items() if value is None]
+            if not missing:                 return portDict
+            if time.time() > deadline:      raise TimeoutError(f"Ports {missing} not available from PortManager at {host}:{managerPort}")
+            time.sleep(0.2)
 
 def get_isMultiplePC(host, managerPort):
     wait_for_udp_server(host, managerPort)

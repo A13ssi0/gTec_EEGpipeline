@@ -31,8 +31,16 @@ class PipelineTelemetry:
     """Aggregate stream timing and report compact summaries at a bounded rate."""
 
     def __init__(self, name, expected_period_s=None, enabled=True,
-                 report_interval_s=5, verbose=False):
+                 report_interval_s=5, verbose=False,
+                 rate_tolerance=0.02, max_gap_ms=250, max_input_age_ms=100, check_cadence=True):
         self.name = name
+        # Only the source (Acquisition) checks rate and pauses: downstream nodes inherit them, so they would repeat
+        # the same warning. A downstream node falling behind shows up as its inputs waiting (max_input_age_ms)
+        self.check_cadence = check_cadence
+        # Warning tolerances: jitter is normal (Bluetooth delivers chunks in bursts), falling behind is not
+        self.rate_tolerance = rate_tolerance        # average rate may be this fraction below the expected one
+        self.max_gap_ms = max_gap_ms                # longest acceptable pause between two chunks
+        self.max_input_age_ms = max_input_age_ms    # p95 of how long a message waited before being processed
         self.expected_period_s = expected_period_s
         self.enabled = enabled
         self.verbose = verbose
@@ -138,15 +146,19 @@ class PipelineTelemetry:
                 f"{self._percentile(transport, 0.95):.1f}ms"
             )
 
-        cadence_late = False
+        reasons = []
         if self.expected_period_s is not None:
             expected_ms = self.expected_period_s * 1000
             details.insert(1, f"expected={expected_ms:.1f}ms")
-            cadence_late = p95_interval_ms > max(expected_ms * 1.5, expected_ms + 5)
+            if self.check_cadence and mean_interval_ms > expected_ms * (1 + self.rate_tolerance):
+                reasons.append(f"rate more than {self.rate_tolerance:.0%} below {1000 / expected_ms:.2f}Hz")
+        if self.check_cadence and max_interval_ms > self.max_gap_ms:
+            reasons.append(f"pause of {max_interval_ms:.0f}ms")
+        if transport and self._percentile(transport, 0.95) > self.max_input_age_ms:
+            reasons.append(f"inputs waiting more than {self.max_input_age_ms:.0f}ms")
 
-        transport_late = bool(transport) and self._percentile(transport, 0.95) > 100
-        if self.verbose or final or cadence_late or transport_late:
-            level = "WARNING " if cadence_late or transport_late else ""
+        if self.verbose or final or reasons:
+            level = f"WARNING ({', '.join(reasons)}) " if reasons else ""
             print(f"[Telemetry:{self.name}] {level}{'; '.join(details)}")
 
     def close(self):

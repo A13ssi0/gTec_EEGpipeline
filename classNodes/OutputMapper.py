@@ -16,13 +16,14 @@ class OutputMapper:
         self.alpha = alpha
         self.percPosX = 0.5 
         self.new_data_event = threading.Event()
+        self.prob_lock = threading.Lock()
         self.reset_event = threading.Event()
         self._print_count = 0
         self._print_timer = time.time()
         self._prints_per_sec = 0.0
         self.telemetry = PipelineTelemetry(self.name, enabled=telemetryEnabled,
                                            report_interval_s=telemetryReportSeconds,
-                                           verbose=telemetryVerbose)
+                                           verbose=telemetryVerbose, check_cadence=False)
 
 
         parent_dir = os.path.dirname(os.path.abspath(''))
@@ -58,7 +59,7 @@ class OutputMapper:
         self.PercX_socket = TCPServer(host=self.host, port=portDict['PercPosX'], serverName=self.name, node=self)
         self.InfoDictPort = portDict['InfoDictionary']
 
-        self.events = wait_for_tcp_server(self.host, portDict['EventBus'])
+        self.events = wait_for_tcp_server(self.infoHost, portDict['EventBus'])  # self.host can be 0.0.0.0 (listen only): Windows cannot connect to it
         data = {'alpha': self.alpha, 'weights': self.weights.tolist()}
         message = f'ADD_INFO/{data}'
         send_tcp(message, self.events)
@@ -97,18 +98,28 @@ class OutputMapper:
             while not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():
                 self.new_data_event.wait(timeout=1.0)
 
+                # Read and consume under the lock: a probability arriving meanwhile stays new and re-sets the event
+                with self.prob_lock:
+                    hasNew = self.new_data_event.is_set()
+                    if hasNew:
+                        probabilities = np.array([prob['values'] for prob in self.probabilities])
+                        for prob in self.probabilities: prob['isNew'] = False
+                        self.new_data_event.clear()
+
                 if self.reset_event.is_set():
+                    # Hold the output at exactly 0.5 until START: new probabilities are consumed but not integrated
                     # print(f"[{self.name}] Resetting integrated probabilities and weights.")
                     self.integratedProb = np.full(2, 0.5)
                     self.percPosX = self.integratedProb[1]
                     self.PercX_socket.broadcast(str(self.percPosX))
                     # print(f"[{self.name}] PERCPOSX: {self.percPosX}") # for testing
-                
+                    if hasNew:  self.telemetry.tick()
+                    continue
 
-                if self.new_data_event.is_set():
+
+                if hasNew:
                     processing_start = time.perf_counter()
                     # self._print_count += 1
-                    probabilities = np.array([prob['values'] for prob in self.probabilities])
                     weighted_avg = self.weighted_avg(probabilities, self.weights, axis=0)
 
                     # if probabilities[0][0] % 50 == 0: # For testing 
@@ -153,9 +164,7 @@ class OutputMapper:
                              
                     self.telemetry.tick(processing_s=time.perf_counter() - processing_start)
 
-                    self._print_timer = time.time()                    
-                    for prob in self.probabilities: prob['isNew'] = False
-                    self.new_data_event.clear()
+                    self._print_timer = time.time()
 
         except Exception as e:
             if not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():   print(f"[{self.name}] Error or disconnected:", e)

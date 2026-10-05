@@ -56,20 +56,20 @@ class Acquisition:
         self.telemetry = PipelineTelemetry(self.name, self.info['dataChunkSize'] / self.info['SampleRate'], self.telemetryEnabled, self.telemetryReportSeconds, self.telemetryVerbose)
         dt = self.info['dataChunkSize'] / self.info['SampleRate']
         n_channels = len(self.info['channels'])
-        sleep_time = max(0, dt - 0.001)
 
         print(f"[{self.name}] Starting simulated acquisition...")
         self.InfoDict_socket.start()
         self.EEG_socket.start()
 
         count = 0
+        next_time = time.perf_counter()
         while not self.EEG_socket._stopEvent.is_set():
             data = count * np.ones((self.info['dataChunkSize'], n_channels), dtype=np.float32)
             self.data_callback(data)
-            # if data[0,0] % 50 == 0: # For testing 
+            # if data[0,0] % 50 == 0: # For testing
             #         aa = datetime.now().strftime("%H:%M:%S.%f")# For testing
             #         print(f" ---------- Sending {data[0,0]} chunks at {aa}.")# For testing
-            time.sleep(sleep_time)
+            next_time = self.wait_next_chunk(next_time, dt)
             count += 1
 
 
@@ -87,47 +87,69 @@ class Acquisition:
         print(f"[{self.name}] Loaded MAT file: {self.device}.")
 
         dt = self.info['dataChunkSize'] / self.info['SampleRate']
-        sleep_time = max(0, dt - 0.001)
         print(f"[{self.name}] Running acquisition with MAT file: {self.device}")
         self.InfoDict_socket.start()
         self.EEG_socket.start()
 
         pointer = 0
+        next_time = time.perf_counter()
         while not self.EEG_socket._stopEvent.is_set():
             data = signal[pointer:pointer + self.info['dataChunkSize'], :]
             self.data_callback(data)
             pointer += self.info['dataChunkSize']
-            if pointer + self.info['dataChunkSize'] >= signal.shape[0]:   
+            if pointer + self.info['dataChunkSize'] > signal.shape[0]:
                 print(f"[{self.name}] Reached end of data, restarting from beginning.")
                 pointer = 0
-            time.sleep(sleep_time)
+            next_time = self.wait_next_chunk(next_time, dt)
+
+
+    def wait_next_chunk(self, next_time, dt):
+        # Absolute schedule: sleep jitter and send time do not accumulate, so the average rate is exactly 1/dt
+        next_time += dt
+        delay = next_time - time.perf_counter()
+        if delay > 0:   time.sleep(delay)
+        else:           next_time = time.perf_counter()  # fell behind (e.g. system stall): resync instead of bursting
+        return next_time
 
 
     def _run_real_device(self):
-        try:        self._run_nautilus()
-        except:     self._run_unicorn()
+        try:
+            self._run_nautilus()
+        except Exception as e:
+            if self.EEG_socket.is_alive():  raise   # failed during streaming, not during connection
+            print(f"[{self.name}] Nautilus not available ({e}). Trying Unicorn...")
+            self.device = 'un'
+            self._run_unicorn()
 
 
     def _run_unicorn(self):
         deviceList = UnicornPy.GetAvailableDevices(True)
-        if self.device.startswith('UN-'):
+        if self.device.upper().startswith('UN-'):
             self.unicorn = UnicornPy.Unicorn(self.device)
-        elif self.device == 'un' or self.device is None:     
-            for self.device in deviceList:
+        else:
+            for deviceName in deviceList:
                 try:
-                    print(f"[{self.name}] Trying to connect to Unicorn device: {self.device}")
-                    self.unicorn = UnicornPy.Unicorn(self.device)
+                    print(f"[{self.name}] Trying to connect to Unicorn device: {deviceName}")
+                    self.unicorn = UnicornPy.Unicorn(deviceName)
+                    self.device = deviceName
                     break
                 except UnicornPy.DeviceException as e:
                     print(f"[{self.name}] Device not found")
                 except Exception as e:
                     print(f"[{self.name}] Unexpected error during Unicorn headset connection: {e}")
                     raise e
-                    
+            if not hasattr(self, 'unicorn'):    raise RuntimeError(f"[{self.name}] No Unicorn device found (available: {deviceList})")
+
         print(f"[{self.name}] Using Unicorn device: {self.device}")
         self.info['device'] = [self.device]
         channelIndex = [self.unicorn.GetChannelIndex('EEG '+str(i)) for i in range(1,9)] # from 1 to 8
         numberOfAcquiredChannels= self.unicorn.GetNumberOfAcquiredChannels()
+        # Headset sample counter (+1 per sample): any jump means samples lost before reaching the PC
+        try:    counterIndex = self.unicorn.GetChannelIndex('Counter')
+        except Exception:
+            counterIndex = None
+            print(f"[{self.name}] Warning: Unicorn counter channel not available, lost samples cannot be detected")
+        lastCounter, lostSamples = None, 0
         self.SetUnicornSettings()
         self.telemetry = PipelineTelemetry(self.name, self.info['dataChunkSize'] / self.info['SampleRate'], self.telemetryEnabled, self.telemetryReportSeconds, self.telemetryVerbose)
         receiveBufferBufferLength = self.info['dataChunkSize'] * numberOfAcquiredChannels * 4
@@ -143,6 +165,13 @@ class Acquisition:
                 self.unicorn.GetData(self.info['dataChunkSize'],receiveBuffer,receiveBufferBufferLength)
                 data = np.frombuffer(receiveBuffer, dtype=np.float32, count=numberOfAcquiredChannels * self.info['dataChunkSize'])
                 data = np.reshape(data, (self.info['dataChunkSize'], numberOfAcquiredChannels))
+                if counterIndex is not None:
+                    counter = data[:, counterIndex]
+                    if lastCounter is not None and counter[-1] - lastCounter != len(counter):
+                        missing = int(counter[-1] - lastCounter - len(counter))
+                        lostSamples += missing
+                        print(f"[{self.name}] WARNING: headset counter jumped, {missing} samples lost before this chunk (total {lostSamples})")
+                    lastCounter = counter[-1]
                 data = data[:, channelIndex]
                 # data = count * np.ones(data.shape) # for testing
                 # if data[0,0] % 50 == 0: # For testing 
@@ -153,7 +182,12 @@ class Acquisition:
                 # count += 1 # for testing
         except Exception as e:
             print(f"[{self.name}] Error during Unicorn acquisition: {e}")
-                                    
+        finally:
+            # Stopped from the acquisition thread itself, never while GetData is running
+            self.unicorn.StopAcquisition()
+            del self.unicorn
+            if counterIndex is not None:    print(f"[{self.name}] Headset counter check: {lostSamples} samples lost")
+
 
     def _run_nautilus(self):
         self.SetNautilusSettings()
@@ -169,7 +203,8 @@ class Acquisition:
         print(f"[{self.name}] Starting real acquisition with gNautilus...")
         self.InfoDict_socket.start()
         self.EEG_socket.start()
-        self.nautilus.GetData(self.info['dataChunkSize'], more=self.data_callback)
+        try:        self.nautilus.GetData(self.info['dataChunkSize'], more=self.data_callback)  # returns once data_callback returns False
+        finally:    del self.nautilus
 
 
     def SetNautilusSettings(self):
@@ -200,15 +235,11 @@ class Acquisition:
             if not self.EEG_socket._stopEvent.is_set(): print(f"[{self.name}] Broadcast error: {e}")
             self.EEG_socket._stopEvent.set()
             return False
-        return True
+        return not self.EEG_socket._stopEvent.is_set()  # False tells pygds to stop GetData
 
 
     def close(self):
-        if hasattr(self, 'nautilus') and self.nautilus:     del self.nautilus
-        if hasattr(self, 'unicorn') and self.unicorn:       
-            self.unicorn.StopAcquisition()
-            del self.unicorn
-
+        # Only signal the stop: the acquisition thread stops and releases the device itself
         safeClose_socket(self.InfoDict_socket, name=self.name)
         safeClose_socket(self.EEG_socket, name=self.name)
         if hasattr(self, 'telemetry'):

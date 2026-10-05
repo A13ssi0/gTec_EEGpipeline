@@ -21,7 +21,7 @@ telemetryVerbose = sys.argv[5].lower() == 'true' if len(sys.argv) > 5 else False
 
 stop_event = threading.Event()
 def on_hotkey():    stop_event.set()
-keyboard.add_hotkey('F1', on_hotkey)
+keyboard.add_hotkey('F2', on_hotkey)
 keyboard.add_hotkey('F12', on_hotkey)
 
 na = Acquisition(device=device, managerPort=managerPort, telemetryEnabled=telemetryEnabled,

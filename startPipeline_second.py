@@ -6,6 +6,7 @@ from utils.server import get_free_ports, check_free_port
 # ---------------------------------------------------------------------------------------------
 
 useMultiplePc = False
+isMainPC = False  # multi-PC only: True on the machine running the OutputMapper, False on the secondary
 
 portMain = 25798  
 genPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -41,16 +42,20 @@ hostname = socket.gethostname()
 IPAddr = socket.gethostbyname(hostname) 
 
 
-if not check_free_port(host, portMain): 
+if useMultiplePc:
+    # Separate machines: port {portMain} is free on both, so the role comes from isMainPC
+    isMain = isMainPC
+    portManagerPort = str(portMain) if isMain else str(get_free_ports(ip=host, n=1, start=portMain)[0])
+    if isMain:  print(f"[!!!] MAIN IP ADDRESS [!!!] : {IPAddr}  (enter it on the secondary machine)")
+    else:       print(f"This machine is the SECONDARY. Its IP address is {IPAddr}")
+elif not check_free_port(host, portMain): 
     print(f"Port {portMain} is NOT free. The pipeline will NOT be considered the main machine.")    
     portManagerPort = str(get_free_ports(ip=host, n=1, start=portMain)[0])  
     isMain = False
-    if useMultiplePc:     print(f"[!!!] MAIN IP ADDRESS [!!!] : {IPAddr}")
 else:
     print(f"Port {portMain} is free. The pipeline will be considered the main machine.") 
     portManagerPort = str(portMain)
     isMain = True
-    if useMultiplePc:     print(f"[!!!] SECONDARY IP ADDRESS [!!!] : {IPAddr}")
 
 
 if runType == 'calibration':   alpha = None
@@ -93,7 +98,7 @@ deviceArgument = '' if device is None else str(device)
 telemetryArguments = [str(telemetryEnabled), str(telemetryReportSeconds), str(telemetryVerbose)]
 subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchPortManager.py"), portManagerPort, json.dumps(portDict), str(isMain), str(useMultiplePc)]) # F1
 subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchAcquisition.py"), deviceArgument, portManagerPort, *telemetryArguments])  # F2
-subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchRecorder.py"), portManagerPort, subjectCode, recFolder, runType, task]) # F5
+subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchRecorder.py"), portManagerPort, subjectCode, recFolder, runType, task, *telemetryArguments]) # F5
 if runType == 'evaluation' or runType == 'test': 
     path = os.path.join(modelFolder,subjectCode,model)
     subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchFilter.py"), portManagerPort, *telemetryArguments])  # F3

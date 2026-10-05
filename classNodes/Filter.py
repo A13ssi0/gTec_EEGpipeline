@@ -39,7 +39,7 @@ class Filter:
                 print(f"[{self.name}] Failed to parse info: {e}")
                 self.info = {}
         print(f"[{self.name}] Received info dictionary")
-        self.telemetry = PipelineTelemetry(self.name, self.info['dataChunkSize'] / self.info['SampleRate'], self.telemetryEnabled, self.telemetryReportSeconds, self.telemetryVerbose)
+        self.telemetry = PipelineTelemetry(self.name, self.info['dataChunkSize'] / self.info['SampleRate'], self.telemetryEnabled, self.telemetryReportSeconds, self.telemetryVerbose, check_cadence=False)
 
         self.Filtered_socket.start()
 

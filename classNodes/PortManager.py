@@ -1,5 +1,5 @@
 from utils.server import UDPServer, safeClose_socket, wait_for_udp_server, get_serversPort, send_udp
-import time
+import time, socket
 
 
 class PortManager:
@@ -32,8 +32,10 @@ class PortManager:
             PortMain = self.dictPorts['PortMain']
             wait_for_udp_server(IPAddrMain, PortMain)
             self.dictPorts.update(get_serversPort(host=IPAddrMain, managerPort=PortMain, neededPorts=['OutputMapper']))
-            send_udp(self.port_socket.sock, (IPAddrMain, PortMain), f"ADD_PORTS/IPAddrSecondary/{self.dictPorts['IPAddrSecondary']}")
-            send_udp(self.port_socket.sock, (IPAddrMain, PortMain), f"ADD_PORTS/EventBus2/{self.dictPorts['EventBus']}")
+            # Own socket: port_socket is bound to 127.0.0.1, which cannot send to another machine
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
+                send_udp(udp_sock, (IPAddrMain, PortMain), f"ADD_PORTS/IPAddrSecondary/{self.dictPorts['IPAddrSecondary']}")
+                send_udp(udp_sock, (IPAddrMain, PortMain), f"ADD_PORTS/EventBus2/{self.dictPorts['EventBus']}")
 
         while not self.port_socket._stopEvent.is_set():
             time.sleep(0.1)
