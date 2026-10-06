@@ -24,6 +24,9 @@ alpha = float(sys.argv[3]) if len(sys.argv) > 3 else 0.96
 telemetryEnabled = sys.argv[4].lower() == 'true' if len(sys.argv) > 4 else True
 telemetryReportSeconds = float(sys.argv[5]) if len(sys.argv) > 5 else 5
 telemetryVerbose = sys.argv[6].lower() == 'true' if len(sys.argv) > 6 else False
+predictionTelemetry = sys.argv[7].lower() if len(sys.argv) > 7 else '0'     # print every Nth update, 0 = off
+predictionTelemetry = {'true': 1, 'false': 0}.get(predictionTelemetry, predictionTelemetry)
+predictionTelemetry = int(predictionTelemetry)
 
 stop_event = threading.Event()
 def on_hotkey():    stop_event.set()
@@ -33,7 +36,7 @@ keyboard.add_hotkey('F12', on_hotkey)
 
 noutm = OutputMapper(managerPort=managerPort, weights=weights, alpha=alpha,
                      telemetryEnabled=telemetryEnabled, telemetryReportSeconds=telemetryReportSeconds,
-                     telemetryVerbose=telemetryVerbose)
+                     telemetryVerbose=telemetryVerbose, predictionTelemetry=predictionTelemetry)
 thread = threading.Thread(target=noutm.run)
 thread.start()
 

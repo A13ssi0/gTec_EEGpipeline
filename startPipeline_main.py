@@ -18,24 +18,25 @@ weightsFolder = os.path.join(genPath, "weights")
 
 
 
-runType =  "test" # Default run type (e.g., 'calibration', 'evaluation', 'test')
-task = 'mi_lhrh_TEST'  # Default task
+runType =  "evaluation" # Default run type (e.g., 'calibration', 'evaluation', 'test')
+task = 'mi_lhrh'  # Default task, mi_lhrh_TEST
 
 
-subjectCode = 'test'  # Default subject code
+subjectCode = 'b5'  # Default subject code
 
 # device = 'test'
-device = 'UN-2023.07.18'
+device = 'UN-2023.07.27'
 # device = '  # un na test doubleTest
 
-model = 'modelTest.joblib'  # Default model for testing
-alpha = 0.99
-weights = 'same'
+model = 'b5.20261006.1252.mi_lhrh.joblib'  # Default model for testing
+alpha = 0.987
+weights = [1]
 
 # Timing telemetry: quiet unless a stage falls behind; verbose prints one summary per interval.
 telemetryEnabled = True
-telemetryReportSeconds = 5
+telemetryReportSeconds = 0.5
 telemetryVerbose = False
+predictionTelemetry = 5      # evaluation/test only: print every Nth prediction with the integrated output (0 = off; 5 = 5 lines/s)
 
 
 
@@ -128,5 +129,5 @@ subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchRecorder.py
 if runType == 'evaluation' or runType == 'test': 
     path = os.path.join(modelFolder,subjectCode,model)
     subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchFilter.py"), portManagerPort, *telemetryArguments])  # F3
-    subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchClassifier.py"), path, portManagerPort, laplacianPath, *telemetryArguments]) # F6
-    if isMain: subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchOutputMapper.py"), portManagerPort, str(weights), str(alpha), *telemetryArguments]) # F7
+    subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchClassifier.py"), path, portManagerPort, laplacianPath, *telemetryArguments, str(predictionTelemetry)]) # F6
+    if isMain: subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchOutputMapper.py"), portManagerPort, str(weights), str(alpha), *telemetryArguments, str(predictionTelemetry)]) # F7

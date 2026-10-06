@@ -10,7 +10,7 @@ from py_utils.eeg_managment import get_channelsMask
 from py_utils.signal_processing import get_covariance_matrix_traceNorm_online, get_covariance_matrix_lwfNorm_online
 from riemann_utils.covariances import center_covariance_online
 from utils.telemetry import PipelineTelemetry, timestamp_age_ms
-import keyboard, socket, ast, threading, warnings
+import keyboard, socket, ast, threading, warnings, os
 import numpy as np
 from datetime import datetime # for testing
 import time
@@ -19,8 +19,10 @@ import time
 
 class Classifier:
     def __init__(self, modelPath, managerPort=25798, laplacianPath=None, host='127.0.0.1',
-                 telemetryEnabled=True, telemetryReportSeconds=5, telemetryVerbose=False):
+                 telemetryEnabled=True, telemetryReportSeconds=5, telemetryVerbose=False, predictionTelemetry=0):
         self.name = 'Classifier'
+        self.predictionTelemetry = int(predictionTelemetry)    # print every Nth prediction, 0 = off
+        self._predCounter = 0
         self.host = host
         self._stopEvent = threading.Event()
 
@@ -46,6 +48,10 @@ class Classifier:
         self.telemetryEnabled = telemetryEnabled
         self.telemetryReportSeconds = telemetryReportSeconds
         self.telemetryVerbose = telemetryVerbose
+
+        # Start message and stall warning, so the operator can see the model is classifying
+        self.modelName = os.path.basename(modelPath)
+        self.statusSeconds = 5
 
 
         neededPorts = ['FilteredData', 'InfoDictionary', 'OutputMapper', 'host']
@@ -74,6 +80,38 @@ class Classifier:
             print(f"[{self.name}] Model has no Laplacian stored, using device mask: {laplacianPath}")
             return loadmat(laplacianPath)['lapMask']
         return None
+
+
+    def class_labels(self):
+        names = {769: 'LH', 770: 'RH'}
+        classes = self.classifier_dict.get('classes') if isinstance(self.classifier_dict, dict) else None
+        if classes is None or len(classes) != 2:    return ['class1', 'class2']
+        return [names.get(int(c), str(c)) for c in classes]
+
+
+    def count_prediction(self, prob, rejected=False):
+        self._predCounter += 1
+        # On the main machine the OutputMapper prints these together with the integrated output
+        if not self.isMain and self.predictionTelemetry > 0 and self._predCounter % self.predictionTelemetry == 0:
+            if rejected:                predicted = 'rejected'
+            elif prob[0] == prob[1]:    predicted = 'tie'
+            else:                       predicted = self.labels[np.argmax(prob)]
+            print(f"[{self.name}] Prediction: {self.labels[0]}/{self.labels[1]} {prob[0]:.2f}/{prob[1]:.2f} -> {predicted}")
+
+
+    def start_status(self):
+        self.labels = self.class_labels()
+        print(f"[{self.name}] >>> MODEL RUNNING ({self.modelName}): sending probabilities to the output mapper <<<")
+        threading.Thread(target=self.stall_watch, daemon=True).start()
+
+
+    def stall_watch(self):
+        # Silent while predictions flow; warns only if they stop
+        lastCount = self._predCounter
+        while not self._stopEvent.wait(self.statusSeconds):
+            if self._predCounter == lastCount:
+                print(f"[{self.name}] WARNING: no predictions in the last {self.statusSeconds}s (no data from the filter?)")
+            lastCount = self._predCounter
 
 
     def preprocess(self, matrix, channelMask):
@@ -141,6 +179,7 @@ class Classifier:
             #     print(f" ------  Received {matrix[0,0]} chunks at {aa}.")# For testing
             self.buffer.add_data(matrix)
         # print(f"[{self.name}] Buffer filled. Starting fake classification...")
+        if not self._stopEvent.is_set():    self.start_status()
 
         # qw = 0
         while not self._stopEvent.is_set():
@@ -173,11 +212,12 @@ class Classifier:
                 # prob = np.array([value, value])
 
                 send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock)
+                self.count_prediction(prob)
                 processing_s = time.perf_counter() - processing_start
 
                 ts, matrix = recv_tcp(self.filtSock)
                 input_age_ms = timestamp_age_ms(ts)
-                # if matrix[0,0] % 50 == 0: # For testing 
+                # if matrix[0,0] % 50 == 0: # For testing
                 #     previous = datetime.now()
                 #     aa = previous.strftime("%H:%M:%S.%f")# For testing
                 #     print(f" ------  Received {matrix[0,0]} chunks at {aa}.")# For testing
@@ -233,6 +273,7 @@ class Classifier:
 
 
         # print(f"||||||||||||||| [{self.name}]  BUFFER FULLLLLLLLLL: {matrix[0,0]}") # For testing
+        if not self._stopEvent.is_set():    self.start_status()
         while not self._stopEvent.is_set():
             try:
                 processing_start = time.perf_counter()
@@ -255,7 +296,8 @@ class Classifier:
                 # print(f" ---- [{self.name}] Time for prediction: {kk_pred-kk_cov}")  # for testing
 
                 prob = prob[0][0]
-                if self.rejectionThreshold is not None and np.max(prob)<self.rejectionThreshold:   
+                rejected = self.rejectionThreshold is not None and np.max(prob)<self.rejectionThreshold
+                if rejected:
                     # print(f"[{self.name}] Probabilities: {[np.nan, np.nan]} (rejected)") # for testing
                     prob = [0.5, 0.5]
                     # print(prob)
@@ -266,6 +308,7 @@ class Classifier:
                     # print(prob)
                 # print(f"||||||||||||||| [{self.name}]  probabilities: {prob}") # For testing
                 send_tcp(f'PROB/{prob[0]}/{prob[1]}', self.probSock) # for testing
+                self.count_prediction(prob, rejected)
                 processing_s = time.perf_counter() - processing_start
                     # pass # for testing
                 # print(f" ------ [{self.name}] Time for sends: {time.time()-kk_pred}")  # for testing

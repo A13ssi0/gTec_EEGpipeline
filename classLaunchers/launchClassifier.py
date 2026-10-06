@@ -16,6 +16,9 @@ laplacianPath = sys.argv[3] if len(sys.argv) > 3 else None
 telemetryEnabled = sys.argv[4].lower() == 'true' if len(sys.argv) > 4 else True
 telemetryReportSeconds = float(sys.argv[5]) if len(sys.argv) > 5 else 5
 telemetryVerbose = sys.argv[6].lower() == 'true' if len(sys.argv) > 6 else False
+predictionTelemetry = sys.argv[7].lower() if len(sys.argv) > 7 else '0'     # print every Nth prediction, 0 = off
+predictionTelemetry = {'true': 1, 'false': 0}.get(predictionTelemetry, predictionTelemetry)
+predictionTelemetry = int(predictionTelemetry)
 # if modelPath.endswith('test'): modelPath = 'test'
 
 stop_event = threading.Event()
@@ -25,7 +28,7 @@ keyboard.add_hotkey('F12', on_hotkey)
 
 ncls = Classifier(modelPath=modelPath, managerPort=managerPort, laplacianPath=laplacianPath,
                   telemetryEnabled=telemetryEnabled, telemetryReportSeconds=telemetryReportSeconds,
-                  telemetryVerbose=telemetryVerbose)
+                  telemetryVerbose=telemetryVerbose, predictionTelemetry=predictionTelemetry)
 thread = threading.Thread(target=ncls.run)
 thread.start()
 

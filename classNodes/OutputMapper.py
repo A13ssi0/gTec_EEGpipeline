@@ -7,9 +7,11 @@ from utils.telemetry import PipelineTelemetry
 
 class OutputMapper:
     def __init__(self, managerPort=25798, weights=[1], alpha=0.96, host='127.0.0.1',
-                 telemetryEnabled=True, telemetryReportSeconds=5, telemetryVerbose=False):
+                 telemetryEnabled=True, telemetryReportSeconds=5, telemetryVerbose=False, predictionTelemetry=0):
         self.host = host
         self.name = 'OutputMapper'
+        self.predictionTelemetry = int(predictionTelemetry)    # print every Nth update, 0 = off
+        self._predCounter = 0
         self.weights = np.array(weights)
         self.probabilities = []
         self.integratedProb = np.full(2, 0.5) 
@@ -113,6 +115,7 @@ class OutputMapper:
                     self.percPosX = self.integratedProb[1]
                     self.PercX_socket.broadcast(str(self.percPosX))
                     # print(f"[{self.name}] PERCPOSX: {self.percPosX}") # for testing
+                    if hasNew:  self.print_prediction(probabilities, None)
                     if hasNew:  self.telemetry.tick()
                     continue
 
@@ -146,6 +149,7 @@ class OutputMapper:
                         # print(f"[{self.name}] Probabilities: {[np.nan, np.nan]} (rejected)") # for testing
 
                         self.PercX_socket.broadcast(str(self.percPosX))
+                        self.print_prediction(probabilities, weighted_probabilities)
                     else:
                         print(f"[{self.name}] WARNING: Received NaN probabilities, skipping update.")
 
@@ -169,7 +173,19 @@ class OutputMapper:
         except Exception as e:
             if not self.Prob_socket._stopEvent.is_set() and not self.PercX_socket._stopEvent.is_set():   print(f"[{self.name}] Error or disconnected:", e)
 
-    def weighted_avg(self, values, weights, axis=0): 
+    def print_prediction(self, probabilities, vote):
+        # L/R = ball direction: the integrated value of the second class is the ball X position
+        self._predCounter += 1
+        if self.predictionTelemetry <= 0 or self._predCounter % self.predictionTelemetry != 0:   return
+        probs = ', '.join(f"{p[0]:.2f}/{p[1]:.2f}" for p in probabilities)
+        if vote is None:            outcome = f"integrated held at {self.integratedProb[0]:.2f}/{self.integratedProb[1]:.2f} (between trials)"
+        else:
+            step = ' ' if vote[0] == vote[1] else ('L' if vote[0] > vote[1] else 'R')
+            outcome = f"-> {step} | integrated L/R {self.integratedProb[0]:.2f}/{self.integratedProb[1]:.2f}"
+        print(f"[{self.name}] Prediction L/R {probs} {outcome}")
+
+
+    def weighted_avg(self, values, weights, axis=0):
         # k = [np.any(np.isnan(vl)) for vl in values]
         # weights[k] =  0
         # if (weights==0).all():   return np.array([np.nan, np.nan])

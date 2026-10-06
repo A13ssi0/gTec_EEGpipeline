@@ -30,6 +30,7 @@ model = 'modelTest.joblib'  # Default model for testing
 telemetryEnabled = True
 telemetryReportSeconds = 5
 telemetryVerbose = False
+predictionTelemetry = 5      # evaluation/test only: print every Nth classifier prediction (0 = off; 5 = 5 lines/s)
 
 
 
@@ -102,5 +103,5 @@ subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchRecorder.py
 if runType == 'evaluation' or runType == 'test': 
     path = os.path.join(modelFolder,subjectCode,model)
     subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchFilter.py"), portManagerPort, *telemetryArguments])  # F3
-    subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchClassifier.py"), path, portManagerPort, laplacianPath, *telemetryArguments]) # F6
+    subprocess.Popen([sys.executable, os.path.join(launchersPath, "launchClassifier.py"), path, portManagerPort, laplacianPath, *telemetryArguments, str(predictionTelemetry)]) # F6
     # if isMain: subprocess.Popen([sys.executable, "classLaunchers\launchOutputMapper.py", portManagerPort, str(weights), str(alpha)]) # F7
