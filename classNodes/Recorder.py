@@ -140,6 +140,10 @@ class Recorder:
             events['POS'] = np.delete(events['POS'], indexes)
             events['DUR'] = np.delete(events['DUR'], indexes)
 
+            nPassed = int(np.sum(events['TYP'] == 897))    # 897 = hit (passed through the gap), 898 = miss
+            nMissed = int(np.sum(events['TYP'] == 898))
+            if nPassed + nMissed > 0:   print(f"[{self.name}] PASSED THROUGH {nPassed}/{nPassed + nMissed} GAPS")
+
         h = {'EVENT': events}
         for key, value in self.info.items():    h[key] = value
         h['recorderVersion'] = 2                    # 2 = event positions from the line fit on all chunk timestamps
